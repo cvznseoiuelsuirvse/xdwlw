@@ -1,1 +1,1 @@
-im just trying to learn c =D
+im just trying to learn c :P
