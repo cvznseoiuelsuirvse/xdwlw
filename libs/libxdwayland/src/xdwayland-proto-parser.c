@@ -53,7 +53,7 @@ static void parse_method(const char *interface_name, xmlNodePtr cur,
   if (strcmp(method_name, "bind") == 0 &&
       strcmp(interface_name, "wl_registry") == 0) {
     method_signature = malloc(5);
-    strcpy(method_signature, "usuu");
+    memcpy(method_signature, "usuu", 5);
 
   } else {
     method_signature = parse_signature(cur);
@@ -63,8 +63,9 @@ static void parse_method(const char *interface_name, xmlNodePtr cur,
   method->signature = method_signature;
   method->arg_count = strlen(method_signature);
 
-  method->name = malloc(strlen(method_name));
-  strcpy(method->name, method_name);
+  size_t method_name_len = strlen(method_name) + 1;
+  method->name = malloc(method_name_len);
+  memcpy(method->name, method_name, method_name_len);
 
   xdwl_list_append(l, method);
 };

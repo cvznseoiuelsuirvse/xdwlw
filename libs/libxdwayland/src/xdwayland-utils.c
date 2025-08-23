@@ -254,8 +254,9 @@ size_t object_register(xdwl_proxy *proxy, size_t object_id, char *object_name) {
   }
 
   xdwl_object object = {.id = o, .interface = interface};
-  object.name = malloc(strlen(object_name + 1));
-  strcpy(object.name, object_name);
+  size_t object_name_len = strlen(object_name) + 1;
+  object.name = malloc(object_name_len);
+  memcpy(object.name, object_name, object_name_len);
 
   xdwl_map_set(proxy->name_to_obj_reg, k1, &object, sizeof(xdwl_object));
   xdwl_map_set(proxy->id_to_obj_reg, k2, &object, sizeof(xdwl_object));

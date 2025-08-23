@@ -16,7 +16,7 @@ PY_INSTALL_DIR = $(HOME)/.local/bin
 SRCS = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(LIBS_DIR)/*/src/*.c)
 OBJS = $(SRCS:%.c=$(DIST_DIR)/%.o)
 
-PROTOCOLS = wlr-layer-shell-unstable-v1-protocol.c viewporter-protocol.c
+PROTOCOLS = wlr-layer-shell-unstable-v1-protocol.c
 
 # LOGS =
 LOGS = -DLOGS
@@ -39,9 +39,6 @@ xdwayland-scanner: $(LIBS_DIR)/libxdwayland/src/xdwayland-scanner.py
 
 wlr-layer-shell-unstable-v1-protocol.c: xdwayland-scanner
 	xdwayland-scanner $(PROTOCOLS_DIR)/wlr-layer-shell-unstable-v1.xml $(basename $@)
-
-viewporter-protocol.c: xdwayland-scanner
-	xdwayland-scanner $(PROTOCOLS_DIR)/viewporter.xml $(basename $@)
 
 clean:
 	rm -rf $(DIST_DIR) $(BIN_DIR)

@@ -174,28 +174,6 @@ void xdwl_map_unset(const xdwl_map *m, xdwl_map_key key) {
   }
 }
 
-// struct xdwl_bucket *prev = NULL;
-//
-// if (!b)
-//   return;
-//
-// while (b) {
-//   if (cmp_func(b->key, key)) {
-//     if (prev) {
-//       prev->next = b->next;
-//     } else {
-//       m->buckets[index] = b->next;
-//     }
-//
-//     free(b->value);
-//     free(b);
-//     return;
-//   }
-//
-//   prev = b;
-//   b = b->next;
-// }
-//
 void *xdwl_map_get(const xdwl_map *m, xdwl_map_key key) {
   size_t index;
   uint8_t (*cmp_func)(xdwl_map_key, xdwl_map_key);
