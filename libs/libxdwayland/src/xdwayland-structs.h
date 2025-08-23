@@ -1,8 +1,8 @@
 #ifndef STRUCTS_H
 #define STRUCTS_H
 
-#include "collections.h"
-#include "common.h"
+#include "xdwayland-collections.h"
+#include "xdwayland-common.h"
 
 typedef union xdwl_arg {
   int32_t i;

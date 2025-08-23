@@ -1,7 +1,7 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
-#include "structs.h"
+#include "xdwayland-structs.h"
 xdwl_proxy *xdwl_proxy_create();
 void xdwl_proxy_destroy(xdwl_proxy *proxy);
 

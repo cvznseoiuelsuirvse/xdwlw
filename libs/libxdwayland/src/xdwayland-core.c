@@ -1,5 +1,5 @@
-#include "client.h"
-#include "common.h"
+#include "xdwayland-client.h"
+#include "xdwayland-common.h"
 
 struct xdwl_display;
 void xdwl_display_add_listener(xdwl_proxy *proxy,

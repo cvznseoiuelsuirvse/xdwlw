@@ -1,9 +1,9 @@
-#include "client.h"
-#include "collections.h"
-#include "common.h"
-#include "core.h"
-#include "structs.h"
-#include "utils.h"
+#include "xdwayland-client.h"
+#include "xdwayland-collections.h"
+#include "xdwayland-common.h"
+#include "xdwayland-core.h"
+#include "xdwayland-structs.h"
+#include "xdwayland-utils.h"
 
 #include <stdarg.h>
 #include <stdint.h>

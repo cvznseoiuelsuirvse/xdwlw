@@ -1,4 +1,4 @@
-#include "common.h"
+#include "xdwayland-common.h"
 #include <stdlib.h>
 
 typedef struct xdwl_map_key {

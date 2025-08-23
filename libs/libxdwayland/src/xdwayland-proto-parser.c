@@ -1,5 +1,5 @@
-#include "collections.h"
-#include "structs.h"
+#include "xdwayland-collections.h"
+#include "xdwayland-structs.h"
 #include <libxml/parser.h>
 #include <stdlib.h>
 #include <string.h>

@@ -205,15 +205,15 @@ def generate(input: str, output_path_base: str) -> None:
     )
 
     c.write(
-        """#include "client.h"
-#include "common.h"
+        """#include "xdwayland-client.h"
+#include "xdwayland-common.h"
 
 """
     )
 
     h.write(
-        """#include "client.h"
-#include "common.h"
+        """#include "xdwayland-client.h"
+#include "xdwayland-common.h"
 
 """
     )

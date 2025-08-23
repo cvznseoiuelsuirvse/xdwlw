@@ -1,9 +1,9 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include "common.h"
-#include "proto-parser.h"
-#include "structs.h"
+#include "xdwayland-common.h"
+#include "xdwayland-proto-parser.h"
+#include "xdwayland-structs.h"
 
 extern xdwl_map *interfaces;
 static inline void load_interfaces(const char *xml_path) {

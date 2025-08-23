@@ -1,7 +1,7 @@
-#include "client.h"
-#include "common.h"
-#include "core.h"
-#include "structs.h"
+#include "xdwayland-client.h"
+#include "xdwayland-common.h"
+#include "xdwayland-core.h"
+#include "xdwayland-structs.h"
 
 #include <stdarg.h>
 #include <string.h>

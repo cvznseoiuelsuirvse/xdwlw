@@ -1,7 +1,7 @@
 #ifndef COLLECTIONS_H
 #define COLLECTIONS_H
 
-#include "common.h"
+#include "xdwayland-common.h"
 
 typedef struct xdwl_map_key {
   char type;

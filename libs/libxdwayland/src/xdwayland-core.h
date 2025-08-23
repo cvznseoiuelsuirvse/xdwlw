@@ -1,8 +1,8 @@
 #ifndef __CORE
 #define __CORE
 
-#include "client.h"
-#include "common.h"
+#include "xdwayland-client.h"
+#include "xdwayland-common.h"
 
 enum xdwl_display_error {
 

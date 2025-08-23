@@ -1,8 +1,10 @@
-#include "client.h"
-#include "collections.h"
-#include "core.h"
+#include "xdwayland-client.h"
+#include "xdwayland-collections.h"
+#include "xdwayland-core.h"
+#include "xdwayland-structs.h"
+#include "xdwayland-utils.h"
+
 #include "structs.h"
-#include "utils.h"
 
 #include <signal.h>
 #include <stddef.h>
@@ -11,12 +13,6 @@
 #define STREQ(s1, s2) strcmp(s1, s2) == 0
 
 xdwl_proxy *proxy;
-
-struct wl_global {
-  uint32_t name;
-  char *interface;
-  uint32_t version;
-};
 
 void _die(int n) {
   xdwl_proxy_destroy(proxy);
