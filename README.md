@@ -1,2 +1,1 @@
-# xdwlw
-wallpaper manager for wlr based compositors
+im just trying to learn c =D

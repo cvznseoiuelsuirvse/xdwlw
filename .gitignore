@@ -1,0 +1,12 @@
+/dist/
+/bin/
+
+*.o
+*.so
+*protocol.*
+.clangd
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
