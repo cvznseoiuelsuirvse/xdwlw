@@ -1,0 +1,57 @@
+#ifndef STRUCTS_H
+#define STRUCTS_H
+
+#include "collections.h"
+#include "common.h"
+
+typedef union xdwl_arg {
+  int32_t i;
+  uint32_t u;
+  float f;
+  char *s;
+  int fd;
+} xdwl_arg;
+
+typedef struct xdwl_raw_message {
+  uint32_t object_id;
+  uint32_t method_id;
+  size_t body_length;
+  char *body;
+  int fd;
+} xdwl_raw_message;
+
+struct xdwl_listener {
+  void *handler;
+  void *user_data;
+};
+
+typedef struct xdwl_proxy {
+  int sockfd;
+  char *buffer;
+  xdwl_map *id_to_obj_reg;
+  xdwl_map *name_to_obj_reg;
+} xdwl_proxy;
+
+struct xdwl_method {
+  char *name;
+  size_t arg_count;
+  char *signature;
+};
+
+struct xdwl_interface {
+  char *name;
+  xdwl_list *requests;
+  xdwl_list *events;
+};
+
+typedef struct xdwl_object {
+  size_t id;
+  char *name;
+  struct xdwl_interface *interface;
+
+} xdwl_object;
+
+typedef void(__xdwl_dispatcher)(size_t, uint16_t, uint16_t, char *);
+typedef void(xdwl_event_handler)(void *, xdwl_arg *);
+
+#endif
