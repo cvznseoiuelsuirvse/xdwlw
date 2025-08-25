@@ -44,7 +44,6 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
         method += f"void xd{interface_name}_{request_name}(xdwl_proxy *proxy, "
 
         args = []
-        fd = False
 
         if interface_name == "wl_registry" and request_name == "bind":
             method += "uint32_t _name, const char *_interface, uint32_t _version, uint32_t _new_id, "
@@ -54,9 +53,7 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
             for arg in request.findall("./arg"):
                 arg_name = "_" + arg.get("name")
                 arg_type = arg.get("type")
-
-                if arg_name != "_fd":
-                    args.append(arg_name)
+                args.append(arg_name)
 
                 match arg_type:
                     case "int" | "enum":
@@ -67,7 +64,6 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
 
                     case "fd":
                         method += f"int {arg_name}"
-                        fd = True
 
                     case "fixed":
                         method += f"float {arg_name}"
@@ -83,9 +79,10 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
         if not header:
             method += " {\n"
             if args:
-                method += f'    xdwl_send_request(proxy, "{interface_name}", {i}, {'_fd' if fd else 0}, {len(args)}, {", ".join(args)});\n'
+                method += f'    xdwl_send_request(proxy, "{interface_name}", {i}, {len(args)}, {", ".join(args)});\n'
+
             else:
-                method += f'    xdwl_send_request(proxy, "{interface_name}", {i}, {'_fd' if fd else 0}, 0);\n'
+                method += f'    xdwl_send_request(proxy, "{interface_name}", {i}, 0);\n'
             method += "}"
 
         method += ";"
@@ -196,10 +193,10 @@ def generate(input: str, output_path_base: str) -> None:
     h = open(output_h, "w")
     c = open(output_c, "w")
 
-    def_name = f"__{os.path.basename(output_path_base).upper().replace('-', '_')}"
+    h_guard = f"__XDWAYLAND_{os.path.basename(output_path_base).upper().replace('-', '_')}"
     h.write(
-        f"""#ifndef {def_name}
-#define {def_name}
+        f"""#ifndef {h_guard}
+#define {h_guard}
 
 """
     )

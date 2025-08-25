@@ -1,5 +1,5 @@
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef XDWAYLAND_UTILS_H
+#define XDWAYLAND_UTILS_H
 
 #include "xdwayland-common.h"
 #include "xdwayland-proto-parser.h"
@@ -12,8 +12,8 @@ static inline void load_interfaces(const char *xml_path) {
 
 void xdwl_log(const char *level, const char *message, ...);
 void xdwl_show_args(xdwl_arg *args, char *signature);
-void xdwl_raise_error(xdwl_proxy *proxy, const char *error_type,
-                      const char *message, ...);
+void xdwl_raise(xdwl_proxy *proxy, const char *origin, const char *message,
+                ...);
 
 void buf_write_u32(void *buffer, size_t *buf_size, uint32_t n);
 void buf_write_u16(void *buffer, size_t *buf_size, uint16_t n);

@@ -1,9 +1,11 @@
 #include "xdwayland-client.h"
+#include "xdwayland-collections.h"
 #include "xdwayland-common.h"
-#include "xdwayland-core.h"
 #include "xdwayland-structs.h"
 
 #include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -49,6 +51,10 @@ void xdwl_show_args(xdwl_arg *args, char *signature) {
     case 's':
       printf("\"%s\"", args[i].s);
       break;
+
+    case 'h':
+      printf("%d", args[i].fd);
+      break;
     }
     if (i != argc - 1) {
       printf(", ");
@@ -58,19 +64,21 @@ void xdwl_show_args(xdwl_arg *args, char *signature) {
   printf(")\n");
 }
 
-void xdwl_raise_error(xdwl_proxy *proxy, const char *error_type,
-                      const char *message, ...) {
+void xdwl_raise(xdwl_proxy *proxy, const char *origin, const char *message,
+                ...) {
   va_list args;
 
   va_start(args, message);
 
-  printf("%sError: ", error_type);
-  vprintf(message, args);
-  printf("\n");
+  fprintf(stderr, "%s: ", origin);
+  vfprintf(stderr, message, args);
+  fprintf(stderr, "\n");
 
   va_end(args);
 
-  xdwl_proxy_destroy(proxy);
+  if (proxy != NULL) {
+    xdwl_proxy_destroy(proxy);
+  }
   exit(1);
 }
 
@@ -213,8 +221,7 @@ uint16_t calculate_body_size(xdwl_arg *args, size_t arg_count,
 }
 
 xdwl_object *object_get_by_id(xdwl_proxy *proxy, size_t object_id) {
-  xdwl_map_key k = {.type = 'i', .key.integer = object_id};
-  xdwl_object *object = xdwl_map_get(proxy->id_to_obj_reg, k);
+  xdwl_object *object = xdwl_map_get(proxy->obj_reg, object_id);
 
   if (!object) {
     return NULL;
@@ -224,11 +231,16 @@ xdwl_object *object_get_by_id(xdwl_proxy *proxy, size_t object_id) {
 }
 
 xdwl_object *object_get_by_name(xdwl_proxy *proxy, const char *object_name) {
-  xdwl_map_key k = {.type = 's', .key.string = object_name};
-  xdwl_object *object = xdwl_map_get(proxy->name_to_obj_reg, k);
+  xdwl_object *object = NULL;
 
-  if (!object) {
-    return 0;
+  for (size_t i = 0; i < proxy->obj_reg->size; i++) {
+    struct xdwl_map_pair *p = proxy->obj_reg->pairs[i];
+    for (p = p; p; p = p->next) {
+      xdwl_object *o = p->value;
+      if (strcmp(o->name, object_name) == 0) {
+        object = o;
+      }
+    }
   }
 
   return object;
@@ -244,23 +256,18 @@ size_t object_register(xdwl_proxy *proxy, size_t object_id, char *object_name) {
     o = object_id;
   }
 
-  xdwl_map_key k1 = {.type = 's', .key.string = object_name};
-  xdwl_map_key k2 = {.type = 'i', .key.integer = o};
-
-  struct xdwl_interface *interface = xdwl_map_get(interfaces, k1);
+  struct xdwl_interface *interface = xdwl_map_get_str(interfaces, object_name);
   if (interface == NULL) {
-    xdwl_raise_error(proxy, "Object", "Failed to register object %s.#%d",
-                     object_name, o);
+    xdwl_raise(
+        proxy, "object_register",
+        "failed to register object %s.#%d. no interfaces found for %s object",
+        object_name, o, object_name);
   }
 
-  xdwl_object object = {.id = o, .interface = interface};
-  size_t object_name_len = strlen(object_name) + 1;
-  object.name = malloc(object_name_len);
-  memcpy(object.name, object_name, object_name_len);
+  xdwl_object object = {
+      .id = o, .name = strdup(object_name), .interface = interface};
 
-  xdwl_map_set(proxy->name_to_obj_reg, k1, &object, sizeof(xdwl_object));
-  xdwl_map_set(proxy->id_to_obj_reg, k2, &object, sizeof(xdwl_object));
-
+  xdwl_map_set(proxy->obj_reg, o, &object, sizeof(xdwl_object));
   return o;
 }
 
@@ -273,11 +280,7 @@ void object_unregister(xdwl_proxy *proxy, size_t object_id) {
       auto_object_id--;
     }
 
-    xdwl_map_key k1 = {.type = 'i', .key.integer = object_id};
-    xdwl_map_key k2 = {.type = 's', .key.string = object->name};
-
     free(object->name);
-    xdwl_map_unset(proxy->id_to_obj_reg, k1);
-    xdwl_map_unset(proxy->name_to_obj_reg, k2);
+    xdwl_map_remove(proxy->obj_reg, object_id);
   }
 }

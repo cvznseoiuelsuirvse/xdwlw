@@ -1,44 +1,43 @@
-#ifndef COLLECTIONS_H
-#define COLLECTIONS_H
+#ifndef XDWAYLAND_COLLECTIONS_H
+#define XDWAYLAND_COLLECTIONS_H
 
 #include "xdwayland-common.h"
 
-typedef struct xdwl_map_key {
-  char type;
-  union key {
-    const char *string;
-    int integer;
-  } key;
-} xdwl_map_key;
-
-struct xdwl_bucket {
-  xdwl_map_key key;
+struct xdwl_map_pair {
+  size_t key;
   void *value;
-  struct xdwl_bucket *prev;
-  struct xdwl_bucket *next;
+  struct xdwl_map_pair *prev;
+  struct xdwl_map_pair *next;
 };
 
 typedef struct xdwl_map {
-  struct xdwl_bucket **buckets;
-  size_t cap;
+  struct xdwl_map_pair **pairs;
+  size_t size;
 } xdwl_map;
 
+xdwl_map *xdwl_map_new(size_t size);
+void xdwl_map_destroy(xdwl_map *m);
+
+void xdwl_map_set(xdwl_map *m, size_t key, void *value, size_t value_size);
+void xdwl_map_set_str(xdwl_map *m, char *key_str, void *value,
+                      size_t value_size);
+
+void xdwl_map_remove(xdwl_map *m, size_t key);
+void xdwl_map_remove_str(xdwl_map *m, char *key_str);
+
+void *xdwl_map_get(xdwl_map *m, size_t key);
+void *xdwl_map_get_str(xdwl_map *m, char *key_str);
+
 typedef struct xdwl_list {
-  uint8_t empty;
-  void *value;
+  void *data;
+  struct xdwl_list *prev;
   struct xdwl_list *next;
 } xdwl_list;
 
-xdwl_map *xdwl_map_new(size_t capacity);
-void xdwl_map_destroy(xdwl_map *m);
-void xdwl_map_set(xdwl_map *m, xdwl_map_key key, void *value,
-                  size_t value_size);
-void xdwl_map_unset(xdwl_map *m, xdwl_map_key key);
-void *xdwl_map_get(xdwl_map *m, xdwl_map_key key);
-
 xdwl_list *xdwl_list_new();
 void xdwl_list_destroy(xdwl_list *l);
-void xdwl_list_append(xdwl_list *l, void *value);
+void xdwl_list_push(xdwl_list *l, void *data, size_t data_size);
+void xdwl_list_remove(xdwl_list **head, size_t index);
 void *xdwl_list_get(xdwl_list *l, size_t index);
 size_t xdwl_list_len(xdwl_list *l);
 

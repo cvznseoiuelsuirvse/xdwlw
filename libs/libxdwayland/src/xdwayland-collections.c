@@ -1,33 +1,18 @@
 #include "xdwayland-common.h"
-#include <stdlib.h>
 
-typedef struct xdwl_map_key {
-  char type;
-  union key {
-    char *string;
-    int integer;
-  } key;
-} xdwl_map_key;
-
-struct xdwl_bucket {
-  xdwl_map_key key;
+struct xdwl_map_pair {
+  size_t key;
   void *value;
-  struct xdwl_bucket *prev;
-  struct xdwl_bucket *next;
+  struct xdwl_map_pair *prev;
+  struct xdwl_map_pair *next;
 };
 
 typedef struct xdwl_map {
-  struct xdwl_bucket **buckets;
-  size_t cap;
+  struct xdwl_map_pair **pairs;
+  size_t size;
 } xdwl_map;
 
-typedef struct xdwl_list {
-  uint8_t empty;
-  void *value;
-  struct xdwl_list *next;
-} xdwl_list;
-
-static size_t djb2(char *string) {
+static size_t hash_string(char *string) {
   size_t hash = 5381;
   int c;
 
@@ -37,233 +22,184 @@ static size_t djb2(char *string) {
   return hash;
 }
 
-static inline uint8_t string_cmp(xdwl_map_key k1, xdwl_map_key k2) {
-  return k1.key.string && (strcmp(k1.key.string, k2.key.string) == 0);
-};
-static inline uint8_t int_cmp(xdwl_map_key k1, xdwl_map_key k2) {
-  return k1.key.integer && k1.key.integer == k2.key.integer;
-};
-
-xdwl_map *xdwl_map_new(size_t capacity) {
+xdwl_map *xdwl_map_new(size_t size) {
   xdwl_map *m = malloc(sizeof(xdwl_map));
-  if (!m)
+  if (m == NULL)
     return NULL;
 
-  m->cap = capacity;
-  m->buckets = calloc(m->cap, sizeof(*m->buckets));
-
-  if (!m->buckets) {
+  m->size = size;
+  m->pairs = calloc(size, sizeof(struct xdwl_map_pair *));
+  if (m->pairs == NULL) {
     free(m);
     return NULL;
   }
 
   return m;
 }
-void xdwl_map_destroy(const xdwl_map *m) {
-  if (!m)
-    return;
 
-  for (size_t i = 0; i < m->cap; i++) {
-    struct xdwl_bucket *b = m->buckets[i];
-
-    while (b) {
-      struct xdwl_bucket *next = b->next;
-      free(b->value);
-      free(b);
-      b = next;
+void xdwl_map_destroy(xdwl_map *m) {
+  for (size_t i = 0; i < m->size; i++) {
+    struct xdwl_map_pair *p = m->pairs[i];
+    while (p) {
+      struct xdwl_map_pair *next = p->next;
+      free(p->value);
+      free(p);
+      p = next;
     }
-  };
-
-  free(m->buckets);
-  free((xdwl_map *)m);
+  }
 }
 
-void xdwl_map_set(const xdwl_map *m, xdwl_map_key key, void *value,
-                  size_t value_size) {
-  size_t index;
-  uint8_t (*cmp_func)(xdwl_map_key, xdwl_map_key);
+void xdwl_map_set(xdwl_map *m, size_t key, void *value, size_t value_size) {
+  size_t index = key % m->size;
 
-  switch (key.type) {
-  case 's':
-    index = djb2(key.key.string);
-    cmp_func = string_cmp;
+  struct xdwl_map_pair *new_p = malloc(sizeof(struct xdwl_map_pair));
+  struct xdwl_map_pair *recent_p = m->pairs[index];
 
-    break;
+  new_p->prev = NULL;
+  new_p->next = recent_p;
+  new_p->key = key;
+  new_p->value = malloc(value_size);
+  memcpy(new_p->value, value, value_size);
 
-  case 'i':
-    index = key.key.integer;
-    cmp_func = int_cmp;
-    break;
-
-  default:
-    fprintf(stderr, "Invalid key type: %c", key.type);
-    exit(1);
+  if (recent_p != NULL) {
+    recent_p->prev = new_p;
   }
 
-  index = index % m->cap;
-  struct xdwl_bucket *b = m->buckets[index];
-
-  while (b) {
-    if (cmp_func(b->key, key)) {
-      free(b->value);
-
-      b->value = malloc(value_size);
-      memcpy(b->value, value, value_size);
-
-      return;
-    }
-    if (!b->next)
-      break;
-    b = b->next;
-  }
-
-  struct xdwl_bucket *new_b = malloc(sizeof(struct xdwl_bucket));
-
-  if (!new_b) {
-    perror("malloc");
-    exit(1);
-  }
-
-  new_b->value = malloc(value_size);
-  memcpy(new_b->value, value, value_size);
-
-  new_b->key = key;
-  new_b->next = m->buckets[index];
-
-  m->buckets[index] = new_b;
+  m->pairs[index] = new_p;
 };
 
-void xdwl_map_unset(const xdwl_map *m, xdwl_map_key key) {
-  size_t index;
-  uint8_t (*cmp_func)(xdwl_map_key, xdwl_map_key);
+void xdwl_map_set_str(xdwl_map *m, char *key_str, void *value,
+                      size_t value_size) {
+  size_t key = hash_string(key_str);
+  return xdwl_map_set(m, key, value, value_size);
+};
 
-  switch (key.type) {
-  case 's':
-    index = djb2(key.key.string);
-    cmp_func = string_cmp;
-    break;
+void xdwl_map_remove(xdwl_map *m, size_t key) {
+  size_t index = key % m->size;
+  struct xdwl_map_pair *p = m->pairs[index];
 
-  case 'i':
-    index = key.key.integer;
-    cmp_func = int_cmp;
-    break;
+  if (p != NULL) {
+    size_t i;
+    for (p = p, i = 0; p; p = p->next, i++) {
+      if (p->key == key) {
+        if (p->prev) {
+          p->prev->next = p->next;
+        } else {
+          m->pairs[index] = p->next;
+        }
 
-  default:
-    fprintf(stderr, "Invalid key type: %c", key.type);
-    exit(1);
-  }
+        if (p->next) {
+          p->next->prev = p->prev;
+        }
 
-  index = index % m->cap;
-  struct xdwl_bucket *b = m->buckets[index];
-  struct xdwl_bucket *prev = NULL;
-
-  for (struct xdwl_bucket *bucket = b; bucket; bucket = bucket->next) {
-    if (cmp_func(bucket->key, key)) {
-      if (prev) {
-        prev->next = bucket->next;
-      } else {
-        m->buckets[index] = bucket->next;
+        free(p->value);
+        break;
       }
-
-      free(b->value);
-      free(b);
-
-    } else {
-      prev = bucket;
     }
   }
+};
+
+void xdwl_map_remove_str(xdwl_map *m, char *key_str) {
+  size_t key = hash_string(key_str);
+  return xdwl_map_remove(m, key);
 }
 
-void *xdwl_map_get(const xdwl_map *m, xdwl_map_key key) {
-  size_t index;
-  uint8_t (*cmp_func)(xdwl_map_key, xdwl_map_key);
+void *xdwl_map_get(xdwl_map *m, size_t key) {
+  size_t index = key % m->size;
+  struct xdwl_map_pair *p = m->pairs[index];
 
-  switch (key.type) {
-  case 's':
-    index = djb2(key.key.string);
-    cmp_func = string_cmp;
-
-    break;
-
-  case 'i':
-    index = key.key.integer;
-    cmp_func = int_cmp;
-    break;
-
-  default:
-    fprintf(stderr, "Invalid key type: %c", key.type);
-    exit(1);
-  }
-
-  index = index % m->cap;
-  struct xdwl_bucket *b = m->buckets[index];
-
-  if (!b)
-    return NULL;
-
-  while (b) {
-    if (cmp_func(b->key, key))
-      return b->value;
-    b = b->next;
+  if (p != NULL) {
+    size_t i;
+    for (p = p, i = 0; p; p = p->next, i++) {
+      if (p->key == key) {
+        return p->value;
+      }
+    }
   }
 
   return NULL;
+};
+
+void *xdwl_map_get_str(xdwl_map *m, char *key_str) {
+  size_t key = hash_string(key_str);
+  return xdwl_map_get(m, key);
 }
 
-xdwl_list *xdwl_list_new() {
+typedef struct xdwl_list {
+  void *data;
+  struct xdwl_list *prev;
+  struct xdwl_list *next;
+} xdwl_list;
+
+void *xdwl_list_new() {
   xdwl_list *l = malloc(sizeof(xdwl_list));
-  if (!l) {
-    perror("malloc");
-    exit(1);
-  }
-  l->empty = 1;
+  if (l == NULL)
+    return NULL;
+
+  l->data = NULL;
   l->next = NULL;
+  l->prev = NULL;
+
   return l;
-};
+}
 
 void xdwl_list_destroy(xdwl_list *l) {
   while (l) {
     xdwl_list *next = l->next;
+    free(l->data);
     free(l);
     l = next;
   }
-};
+}
 
-void xdwl_list_append(xdwl_list *l, void *value) {
-  xdwl_list *current_list;
-  for (current_list = l; current_list->next; current_list = current_list->next)
+void xdwl_list_push(xdwl_list *l, void *data, size_t data_size) {
+  for (l = l; l->next; l = l->next)
     ;
 
-  if (current_list->empty == 1) {
-    current_list->empty = 0;
-    current_list->value = value;
+  l->next = xdwl_list_new();
+  l->next->prev = l;
 
-  } else {
-    xdwl_list *new_list = xdwl_list_new();
-    current_list->next = new_list;
-    current_list->next->empty = 0;
-    current_list->next->value = value;
+  l->data = malloc(data_size);
+  memcpy(l->data, data, data_size);
+}
+
+void xdwl_list_remove(xdwl_list **head, size_t index) {
+  size_t i;
+  xdwl_list *l = *head;
+
+  for (l = l, i = 0; l; l = l->next, i++) {
+    if (index == i) {
+      if (l->prev) {
+        l->prev->next = l->next;
+      } else {
+        *head = l->next;
+      }
+
+      if (l->next) {
+        l->next->prev = l->prev;
+      }
+
+      free(l->data);
+      free(l);
+      break;
+    }
   }
-};
+}
 
 void *xdwl_list_get(xdwl_list *l, size_t index) {
-  size_t current_index = 0;
-
-  while (l) {
-    if (current_index == index)
-      return l->value;
-    current_index++;
-    l = l->next;
+  size_t i;
+  for (l = l, i = 0; l->next; l = l->next, i++) {
+    if (index == i) {
+      return l->data;
+    }
   }
+
   return NULL;
 }
 
 size_t xdwl_list_len(xdwl_list *l) {
-  size_t i = 0;
-  while (l && !l->empty) {
-    l = l->next;
-    i++;
-  }
-
+  size_t i;
+  for (l = l, i = 0; l->next; l = l->next, i++)
+    ;
   return i;
 }

@@ -1,5 +1,5 @@
-#ifndef PROTO_PARSER_H
-#define PROTO_PARSER_H
+#ifndef XDWAYLAND_PROTO_PARSER_H
+#define XDWAYLAND_PROTO_PARSER_H
 
 #include "xdwayland-collections.h"
 

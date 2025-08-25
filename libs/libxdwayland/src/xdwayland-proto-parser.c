@@ -1,6 +1,8 @@
 #include "xdwayland-collections.h"
 #include "xdwayland-structs.h"
+#include <assert.h>
 #include <libxml/parser.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,10 +10,7 @@
 
 static char *parse_signature(xmlNodePtr cur) {
   char *signature = malloc(1);
-  if (signature == NULL) {
-    perror("malloc");
-    return NULL;
-  }
+  assert(signature);
 
   size_t i = 0;
   for (xmlNodePtr node = cur->children; node; node = node->next) {
@@ -52,42 +51,36 @@ static void parse_method(const char *interface_name, xmlNodePtr cur,
 
   if (strcmp(method_name, "bind") == 0 &&
       strcmp(interface_name, "wl_registry") == 0) {
-    method_signature = malloc(5);
-    memcpy(method_signature, "usuu", 5);
+    method_signature = strdup("usuu");
 
   } else {
     method_signature = parse_signature(cur);
   }
 
-  struct xdwl_method *method = malloc(sizeof(struct xdwl_method));
-  method->signature = method_signature;
-  method->arg_count = strlen(method_signature);
-
-  size_t method_name_len = strlen(method_name) + 1;
-  method->name = malloc(method_name_len);
-  memcpy(method->name, method_name, method_name_len);
-
-  xdwl_list_append(l, method);
+  struct xdwl_method method = {.name = method_name,
+                               .signature = method_signature,
+                               .arg_count = strlen(method_signature)};
+  xdwl_list_push(l, &method, sizeof(struct xdwl_method));
 };
 
 static void parse_interface(xmlNodePtr cur, xdwl_map *m) {
   char *interface_name = (char *)xmlGetProp(cur, TO_XMLSTRING("name"));
-  struct xdwl_interface *inteface = malloc(sizeof(struct xdwl_interface));
-  inteface->name = interface_name;
+  struct xdwl_interface interface = {
+      .name = interface_name,
+      .events = xdwl_list_new(),
+      .requests = xdwl_list_new(),
+  };
 
-  inteface->events = xdwl_list_new();
-  inteface->requests = xdwl_list_new();
-
-  xdwl_map_key k = {.type = 's', .key.string = interface_name};
-  xdwl_map_set(m, k, inteface, sizeof(struct xdwl_interface));
+  xdwl_map_set_str(m, interface_name, &interface,
+                   sizeof(struct xdwl_interface));
 
   for (xmlNodePtr c = cur->children; c; c = c->next) {
     if (c->type == XML_ELEMENT_NODE &&
         xmlStrEqual(c->name, TO_XMLSTRING("request"))) {
-      parse_method(interface_name, c, inteface->requests, "request");
+      parse_method(interface_name, c, interface.requests, "request");
     } else if (c->type == XML_ELEMENT_NODE &&
                xmlStrEqual(c->name, TO_XMLSTRING("event"))) {
-      parse_method(interface_name, c, inteface->events, "event");
+      parse_method(interface_name, c, interface.events, "event");
     }
   };
 };

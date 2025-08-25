@@ -1,5 +1,5 @@
-#ifndef STRUCTS_H
-#define STRUCTS_H
+#ifndef XDWAYLAND_STRUCTS_H
+#define XDWAYLAND_STRUCTS_H
 
 #include "xdwayland-collections.h"
 #include "xdwayland-common.h"
@@ -16,20 +16,19 @@ typedef struct xdwl_raw_message {
   uint32_t object_id;
   uint32_t method_id;
   size_t body_length;
-  char *body;
+  char body[CAP - HEADER_SIZE];
   int fd;
 } xdwl_raw_message;
 
 struct xdwl_listener {
-  void *handler;
+  void *interface;
   void *user_data;
 };
 
 typedef struct xdwl_proxy {
   int sockfd;
   char *buffer;
-  xdwl_map *id_to_obj_reg;
-  xdwl_map *name_to_obj_reg;
+  xdwl_map *obj_reg;
 } xdwl_proxy;
 
 struct xdwl_method {
