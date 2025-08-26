@@ -10,8 +10,8 @@
 #include <stdio.h>
 #include <sys/socket.h>
 
-xdwl_map *interfaces = NULL;
-static xdwl_map *listeners = NULL;
+xdwl_map *__xdwl_interfaces = NULL;
+static xdwl_map *__xdwl_listeners = NULL;
 
 static void xdwl_dispatch_message(xdwl_proxy *proxy,
                                   xdwl_raw_message *raw_message) {
@@ -35,7 +35,7 @@ static void xdwl_dispatch_message(xdwl_proxy *proxy,
 #endif
 
   struct xdwl_listener *listener =
-      xdwl_map_get(listeners, raw_message->object_id);
+      xdwl_map_get(__xdwl_listeners, raw_message->object_id);
 
   if (listener) {
     void **interface_ptr = listener->interface;
@@ -64,8 +64,8 @@ static void destroy_objects(xdwl_proxy *proxy) {
 }
 
 static void destroy_interfaces() {
-  for (size_t i = 0; i < interfaces->size; i++) {
-    struct xdwl_map_pair *p = interfaces->pairs[i];
+  for (size_t i = 0; i < __xdwl_interfaces->size; i++) {
+    struct xdwl_map_pair *p = __xdwl_interfaces->pairs[i];
 
     for (p = p; p; p = p->next) {
       struct xdwl_interface *interface = p->value;
@@ -82,12 +82,12 @@ static void destroy_interfaces() {
         free(method->name);
         free(method->signature);
       }
-
       xdwl_list_destroy(interface->requests);
+
       free(interface);
     }
   }
-  xdwl_map_destroy(interfaces);
+  xdwl_map_destroy(__xdwl_interfaces);
 };
 
 xdwl_proxy *xdwl_proxy_create() {
@@ -135,13 +135,13 @@ xdwl_proxy *xdwl_proxy_create() {
     xdwl_raise(proxy, "xdwl_proxy_create", "failed to allocate proxy buffer");
   }
 
-  listeners = xdwl_map_new(CAP);
-  if (listeners == NULL) {
+  __xdwl_listeners = xdwl_map_new(CAP);
+  if (__xdwl_listeners == NULL) {
     xdwl_raise(proxy, "xdwl_proxy_create", "failed to allocate listeners map");
   }
 
-  interfaces = xdwl_map_new(CAP);
-  if (interfaces == NULL) {
+  __xdwl_interfaces = xdwl_map_new(CAP);
+  if (__xdwl_interfaces == NULL) {
     xdwl_raise(proxy, "xdwl_proxy_create", "failed to allocate interfaces map");
   }
 
@@ -165,20 +165,17 @@ void xdwl_proxy_destroy(xdwl_proxy *proxy) {
     free(proxy);
   }
 
-  if (interfaces != NULL) {
+  if (__xdwl_interfaces != NULL) {
     destroy_interfaces();
   }
 
-  if (listeners != NULL) {
-    xdwl_map_destroy(listeners);
+  if (__xdwl_listeners != NULL) {
+    xdwl_map_destroy(__xdwl_listeners);
   };
 };
 
 void xdwl_add_listener(xdwl_proxy *proxy, const char *object_name,
                        void *interface, void *user_data) {
-
-  struct xdwl_listener listener = {.interface = interface,
-                                   .user_data = user_data};
 
   xdwl_object *object = object_get_by_name(proxy, object_name);
   if (!object) {
@@ -186,14 +183,18 @@ void xdwl_add_listener(xdwl_proxy *proxy, const char *object_name,
                "no registered objects found with name %s", object_name);
   }
 
+  struct xdwl_listener listener = {.user_data = user_data,
+                                   .interface = interface};
   size_t object_id = object->id;
-  xdwl_map_set(listeners, object_id, &listener, sizeof(struct xdwl_listener));
+  xdwl_map_set(__xdwl_listeners, object_id, &listener,
+               sizeof(struct xdwl_listener));
 }
 
 void xdwl_remove_listener(xdwl_proxy *proxy, char *object_name) {
-  struct xdwl_listener *listener = xdwl_map_get_str(listeners, object_name);
+  struct xdwl_listener *listener =
+      xdwl_map_get_str(__xdwl_listeners, object_name);
   if (listener != NULL) {
-    xdwl_map_remove_str(listeners, object_name);
+    xdwl_map_remove_str(__xdwl_listeners, object_name);
   }
 }
 

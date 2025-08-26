@@ -49,7 +49,7 @@ void xdwl_map_destroy(xdwl_map *m) {
   }
 }
 
-void xdwl_map_set(xdwl_map *m, size_t key, void *value, size_t value_size) {
+void *xdwl_map_set(xdwl_map *m, size_t key, void *value, size_t value_size) {
   size_t index = key % m->size;
 
   struct xdwl_map_pair *new_p = malloc(sizeof(struct xdwl_map_pair));
@@ -66,10 +66,12 @@ void xdwl_map_set(xdwl_map *m, size_t key, void *value, size_t value_size) {
   }
 
   m->pairs[index] = new_p;
+
+  return new_p->value;
 };
 
-void xdwl_map_set_str(xdwl_map *m, char *key_str, void *value,
-                      size_t value_size) {
+void *xdwl_map_set_str(xdwl_map *m, char *key_str, void *value,
+                       size_t value_size) {
   size_t key = hash_string(key_str);
   return xdwl_map_set(m, key, value, value_size);
 };
@@ -152,7 +154,7 @@ void xdwl_list_destroy(xdwl_list *l) {
   }
 }
 
-void xdwl_list_push(xdwl_list *l, void *data, size_t data_size) {
+void *xdwl_list_push(xdwl_list *l, void *data, size_t data_size) {
   for (l = l; l->next; l = l->next)
     ;
 
@@ -161,6 +163,8 @@ void xdwl_list_push(xdwl_list *l, void *data, size_t data_size) {
 
   l->data = malloc(data_size);
   memcpy(l->data, data, data_size);
+
+  return l->data;
 }
 
 void xdwl_list_remove(xdwl_list **head, size_t index) {

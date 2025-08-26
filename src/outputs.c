@@ -2,10 +2,10 @@
 #include "xdwayland-core.h"
 #include "xdwayland-utils.h"
 
-#include "../viewporter-protocol.h"
 #include "../xdg-output-unstable-v1-protocol.h"
 #include "structs.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -29,10 +29,9 @@ size_t get_outputs(xdwl_proxy *proxy, xdwl_list *globals, xdwl_list *outputs) {
     if (STREQ(g->interface, "wl_output")) {
       new_id = object_register(proxy, 0, g->interface);
 
-      xdwl_remove_listener(proxy, "wl_output");
       xdwl_output_add_listener(proxy, &wl_output, outputs);
 
-      struct output o = {.id = new_id};
+      struct output o = {.id = new_id, .fd = 0, .busy = false};
       xdwl_list_push(outputs, &o, sizeof(struct output));
 
     } else if (STREQ(g->interface, "zxdg_output_manager_v1")) {
@@ -56,9 +55,7 @@ size_t get_outputs(xdwl_proxy *proxy, xdwl_list *globals, xdwl_list *outputs) {
     struct output *o = l->data;
     size_t zxdg_output_object_id = object_register(proxy, 0, "zxdg_output_v1");
 
-    xdwl_remove_listener(proxy, "zxdg_output_v1");
     xdzxdg_output_v1_add_listener(proxy, &zxdg_output_v1, o);
-
     xdzxdg_output_manager_v1_get_xdg_output(proxy, zxdg_output_object_id,
                                             o->id);
 

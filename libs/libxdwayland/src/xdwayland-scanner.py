@@ -51,7 +51,7 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
 
         else:
             for arg in request.findall("./arg"):
-                arg_name = "_" + arg.get("name")
+                arg_name = "_" + arg.get("name", "")
                 arg_type = arg.get("type")
                 args.append(arg_name)
 
@@ -202,15 +202,14 @@ def generate(input: str, output_path_base: str) -> None:
     )
 
     c.write(
-        """#include "xdwayland-client.h"
-#include "xdwayland-common.h"
+        f"""#include "xdwayland-client.h"
+#include "{os.path.basename(output_path_base)}.h"
 
 """
     )
 
     h.write(
-        """#include "xdwayland-client.h"
-#include "xdwayland-common.h"
+        f"""#include "xdwayland-client.h"
 
 """
     )

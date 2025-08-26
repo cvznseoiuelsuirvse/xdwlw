@@ -5,6 +5,9 @@
 #include <unistd.h>
 
 #define STREQ(s1, s2) strcmp(s1, s2) == 0
+#define COLOR(hex)                                                             \
+  {((hex >> 24) & 0xFF), ((hex >> 16) & 0xFF), ((hex >> 8) & 0xFF),            \
+   (hex & 0xFF)}
 
 struct wl_global {
   uint32_t name;
@@ -19,6 +22,8 @@ struct output {
   int height;
   int logical_width;
   int logical_height;
+  int fd;
+  bool busy;
 };
 
 enum non_core_interfaces {

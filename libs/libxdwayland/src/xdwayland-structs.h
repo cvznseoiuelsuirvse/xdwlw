@@ -50,7 +50,6 @@ typedef struct xdwl_object {
 
 } xdwl_object;
 
-typedef void(__xdwl_dispatcher)(size_t, uint16_t, uint16_t, char *);
 typedef void(xdwl_event_handler)(void *, xdwl_arg *);
 
 #endif

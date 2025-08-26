@@ -18,7 +18,7 @@ typedef struct xdwl_map {
 xdwl_map *xdwl_map_new(size_t size);
 void xdwl_map_destroy(xdwl_map *m);
 
-void xdwl_map_set(xdwl_map *m, size_t key, void *value, size_t value_size);
+void *xdwl_map_set(xdwl_map *m, size_t key, void *value, size_t value_size);
 void xdwl_map_set_str(xdwl_map *m, char *key_str, void *value,
                       size_t value_size);
 
@@ -36,7 +36,7 @@ typedef struct xdwl_list {
 
 xdwl_list *xdwl_list_new();
 void xdwl_list_destroy(xdwl_list *l);
-void xdwl_list_push(xdwl_list *l, void *data, size_t data_size);
+void *xdwl_list_push(xdwl_list *l, void *data, size_t data_size);
 void xdwl_list_remove(xdwl_list **head, size_t index);
 void *xdwl_list_get(xdwl_list *l, size_t index);
 size_t xdwl_list_len(xdwl_list *l);

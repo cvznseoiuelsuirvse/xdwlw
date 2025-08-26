@@ -2,7 +2,6 @@
 #define __XDWAYLAND_XDWAYLAND_CORE
 
 #include "xdwayland-client.h"
-#include "xdwayland-common.h"
 
 enum xdwl_display_error {
 

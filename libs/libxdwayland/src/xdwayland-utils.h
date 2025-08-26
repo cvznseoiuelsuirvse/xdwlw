@@ -5,9 +5,9 @@
 #include "xdwayland-proto-parser.h"
 #include "xdwayland-structs.h"
 
-extern xdwl_map *interfaces;
+extern xdwl_map *__xdwl_interfaces;
 static inline void load_interfaces(const char *xml_path) {
-  parse(xml_path, interfaces);
+  parse(xml_path, __xdwl_interfaces);
 }
 
 void xdwl_log(const char *level, const char *message, ...);

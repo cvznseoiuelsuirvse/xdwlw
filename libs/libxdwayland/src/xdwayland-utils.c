@@ -9,7 +9,7 @@
 #include <string.h>
 #include <time.h>
 
-extern xdwl_map *interfaces;
+extern xdwl_map *__xdwl_interfaces;
 static size_t auto_object_id = 0;
 
 void xdwl_log(const char *level, const char *message, ...) {
@@ -256,7 +256,8 @@ size_t object_register(xdwl_proxy *proxy, size_t object_id, char *object_name) {
     o = object_id;
   }
 
-  struct xdwl_interface *interface = xdwl_map_get_str(interfaces, object_name);
+  struct xdwl_interface *interface =
+      xdwl_map_get_str(__xdwl_interfaces, object_name);
   if (interface == NULL) {
     xdwl_raise(
         proxy, "object_register",
