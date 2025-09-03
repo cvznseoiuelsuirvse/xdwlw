@@ -3,6 +3,11 @@
 #include "xdwayland-core.h"
 #include "xdwayland-structs.h"
 #include "xdwayland-utils.h"
+#include <linux/limits.h>
+#include <stdlib.h>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 #include "../wlr-layer-shell-unstable-v1-protocol.h"
 #include "outputs.h"
@@ -10,19 +15,20 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #define BPP 4
+#define LERP(v0, v1, t) ((1 - t) * v0 + t * v1);
+#define COLOR(hex)                                                             \
+  {((hex >> 24) & 0xFF), ((hex >> 16) & 0xFF), ((hex >> 8) & 0xFF),            \
+   (hex & 0xFF)}
 
+enum modes { CENTER = 'C', FIT = 'F' };
 xdwl_proxy *proxy;
 xdwl_list *global_listeners;
 
@@ -62,6 +68,35 @@ void _log(const char *level, const char *message, ...) {
 
   va_end(args);
   fflush(stdout);
+}
+
+uint32_t *resize_image_nni(uint32_t *i_buffer, size_t i_width, size_t i_height,
+                           size_t o_width, size_t o_height) {
+
+  uint32_t *o_buffer = malloc(o_width * o_height * BPP);
+  if (!o_buffer)
+    return NULL;
+
+  for (size_t y = 0; y < o_height; y++) {
+    for (size_t x = 0; x < o_width; x++) {
+      int src_x = round(x * ((float)i_width / o_width));
+      int src_y = round(y * ((float)i_height / o_height));
+      src_x = fmin(src_x, i_width - 1);
+      src_y = fmin(src_y, i_height - 1);
+
+      uint32_t pixel = i_buffer[src_y * i_width + src_x];
+      uint8_t pixelb[] = COLOR(pixel);
+
+      uint8_t a = pixelb[0];
+      uint8_t r = pixelb[1];
+      uint8_t g = pixelb[2];
+      uint8_t b = pixelb[3];
+
+      o_buffer[y * o_width + x] = a << 24 | b << 16 | g << 8 | r;
+    }
+  }
+
+  return o_buffer;
 }
 
 void show_not_supported_interfaces(size_t n) {
@@ -159,7 +194,7 @@ char *init_buffer(struct output *o) {
   xdwl_shm_create_pool(proxy, wl_shm_pool_id, fd, buffer_size);
 
   xdwl_shm_pool_create_buffer(proxy, wl_buffer_id, 0, o->width, o->height,
-                              o->width * BPP, XDWL_SHM_FORMAT_XRGB8888);
+                              o->width * BPP, XDWL_SHM_FORMAT_ARGB8888);
 
   o->busy = true;
   o->fd = fd;
@@ -219,20 +254,7 @@ char *setup_output(struct output *o) {
   return init_buffer(o);
 }
 
-void draw_color_on_output(struct output *o, uint32_t color) {
-  uint32_t *buffer = (uint32_t *)setup_output(o);
-  if (buffer == NULL) {
-    _log("ERROR", "Can't write to %s buffer. %s is busy", o->name);
-    return;
-  }
-
-  int color_bytes[] = COLOR(color);
-  for (size_t i = 0; i < o->width * o->height; i++) {
-    buffer[i] = color;
-  }
-  _log("INFO", "Set buffer color to #%02x%02x%02x%02x", color_bytes[1],
-       color_bytes[2], color_bytes[3], color_bytes[0]);
-
+void attach_and_commit() {
   xdwl_object *wl_buffer = object_get_by_name(proxy, "wl_buffer");
   if (wl_buffer == NULL)
     _raise("no wl_buffer found");
@@ -243,22 +265,118 @@ void draw_color_on_output(struct output *o, uint32_t color) {
   xdwl_surface_commit(proxy);
 
   xdwl_roundtrip(proxy);
+}
+
+void draw_gradient_on_output(struct output *o, uint32_t c0, uint32_t c1) {
+  uint32_t *buffer = (uint32_t *)setup_output(o);
+  if (buffer == NULL) {
+    _log("ERROR", "Can't write to %s buffer. %s is busy", o->name);
+    return;
+  }
+
+  int c0_b[] = COLOR(c0);
+  int c1_b[] = COLOR(c1);
+
+  for (size_t y = 0; y < o->height; y++) {
+    for (size_t x = 0; x < o->width; x++) {
+      float t = (float)x / o->width;
+
+      char r = LERP(c0_b[1], c1_b[1], t);
+      char g = LERP(c0_b[2], c1_b[2], t);
+      char b = LERP(c0_b[3], c1_b[3], t);
+
+      uint32_t pixel = r << 16 | g << 8 | b;
+      buffer[y * o->width + x] = pixel;
+    }
+  }
+
+  attach_and_commit();
+
+  _log("INFO", "Set new buffer gradient");
+}
+void draw_color_on_output(struct output *o, uint32_t color) {
+  uint32_t *buffer = (uint32_t *)setup_output(o);
+  if (buffer == NULL) {
+    _log("ERROR", "Can't write to %s buffer. %s is busy", o->name);
+    return;
+  }
+
+  for (size_t i = 0; i < o->width * o->height; i++) {
+    buffer[i] = color;
+  }
+
+  attach_and_commit();
+
+  int color_bytes[] = COLOR(color);
+  _log("INFO", "Set new buffer color to #%02x%02x%02x%02x", color_bytes[1],
+       color_bytes[2], color_bytes[3], color_bytes[0]);
 };
 
-void draw_image_on_output(struct output *o, char *image_path) {};
+void draw_image_on_output(struct output *o, char *image_path, enum modes mode) {
+  uint32_t *buffer = (uint32_t *)setup_output(o);
+  if (buffer == NULL) {
+    _log("ERROR", "Can't write to %s buffer. %s is busy", o->name);
+    return;
+  }
 
-int main() {
+  int iw;
+  int ih;
+  int channels;
+
+  uint32_t *pixels = (uint32_t *)stbi_load(image_path, &iw, &ih, &channels, 4);
+
+  if (!pixels) {
+    _log("ERROR", "Failed to read %s", image_path);
+    return;
+  }
+
+  _log("INFO", "Loaded %s: %dx%d channels: %d", image_path, iw, ih, channels);
+
+  uint32_t *resized = resize_image_nni(pixels, iw, ih, o->width, o->height);
+  if (!resized) {
+    _log("ERROR", "Failed to resize %s from %dx%d to %dx%d", image_path, iw, ih,
+         o->width, o->height);
+
+    stbi_image_free(pixels);
+    return;
+  }
+
+  memcpy(buffer, resized, o->width * o->height * BPP);
+
+  free(resized);
+  stbi_image_free(pixels);
+
+  attach_and_commit();
+};
+
+xdwl_list *init() {
   global_listeners = xdwl_list_new();
+  if (!global_listeners)
+    return NULL;
+
   proxy = xdwl_proxy_create();
+  if (!proxy)
+    return NULL;
+
   signal(SIGINT, _abort);
 
   object_register(proxy, 0, "wl_display");
-  struct xdwl_display wl_display = {.delete_id = handle_wl_display_delete_id,
-                                    .error = handle_wl_display_error};
-  xdwl_display_add_listener(proxy, &wl_display, NULL);
+  struct xdwl_display *wl_display = xdwl_list_push(
+      global_listeners,
+      &(struct xdwl_display){.delete_id = handle_wl_display_delete_id,
+                             .error = handle_wl_display_error},
+      sizeof(struct xdwl_display));
+
+  xdwl_display_add_listener(proxy, wl_display, NULL);
 
   xdwl_list *globals = xdwl_list_new();
+  if (!globals)
+    return NULL;
+
   xdwl_list *outputs = xdwl_list_new();
+  if (!outputs)
+    return NULL;
+
   size_t binding_result = 0;
 
   binding_result |= bind_globals(proxy, &globals);
@@ -268,15 +386,52 @@ int main() {
 
   if (binding_result > 0) {
     show_not_supported_interfaces(binding_result);
-    goto exit;
+    return NULL;
   };
 
-  for (xdwl_list *l = outputs; l->next; l = l->next) {
-    struct output *o = l->data;
+  return outputs;
+}
+
+int main(int argc, char **argv) {
+  if (argc < 2)
+    return 1;
+
+  int opt;
+  const char *rpath = NULL;
+  char apath[PATH_MAX];
+  enum modes mode = 0;
+
+  while ((opt = getopt(argc, argv, "i:m:")) != -1) {
+    switch (opt) {
+    case 'i':
+      rpath = optarg;
+      break;
+    case 'm':
+      mode = *optarg;
+      break;
+    }
+  }
+
+  if (rpath == NULL || mode == 0)
+    return 1;
+
+  if (!realpath(rpath, apath)) {
+    perror("realpath");
+    return 1;
+  }
+
+  xdwl_list *outputs = init();
+  if (!outputs) {
+    _log("ERROR", "Failed to to init");
+    _abort(errno);
+  }
+
+  for (; outputs->next; outputs = outputs->next) {
+    struct output *o = outputs->data;
     _log("INFO", "Found an output: %s %dx%d", o->name, o->width, o->height,
          o->logical_width, o->logical_height);
 
-    draw_color_on_output(o, 0x151515);
+    draw_image_on_output(o, apath, mode);
   }
 
   for (xdwl_list *l = outputs; l->next; l = l->next) {
@@ -287,7 +442,4 @@ int main() {
 
   while (1)
     xdwl_dispatch(proxy);
-
-exit:
-  _abort(errno);
 }

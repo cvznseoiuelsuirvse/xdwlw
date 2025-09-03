@@ -18,10 +18,10 @@ struct wl_global {
 struct output {
   int id;
   char *name;
-  int width;
-  int height;
-  int logical_width;
-  int logical_height;
+  uint32_t width;
+  uint32_t height;
+  uint32_t logical_width;
+  uint32_t logical_height;
   int fd;
   bool busy;
 };

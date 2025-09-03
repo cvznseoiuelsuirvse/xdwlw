@@ -42,7 +42,7 @@ void xdwl_show_args(xdwl_arg *args, char *signature) {
       printf("%d", args[i].i);
       break;
     case 'u':
-      printf("%d", args[i].u);
+      printf("%u", args[i].u);
       break;
     case 'f':
       printf("%f", args[i].f);

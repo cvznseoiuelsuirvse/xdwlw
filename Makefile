@@ -7,7 +7,7 @@ LIBS_DIR = libs
 PROTOCOLS_DIR = protocols
 
 CPPFLAGS = -I/usr/include/libxml2 -I$(LIBS_DIR)/libxdwayland/src
-LDLIBS = -lxml2
+LDLIBS = -lxml2 -lm
 
 PY_SRCS = $(wildcard $(LIBS_DIR)/*/src/*.py)
 PY_INSTALL_DIR = $(HOME)/.local/bin
@@ -21,8 +21,8 @@ SRCS = $(PROTOCOL_SRCS) $(wildcard $(SRC_DIR)/*.c) $(wildcard $(LIBS_DIR)/*/src/
 OBJS = $(SRCS:%.c=$(DIST_DIR)/%.o)
 
 
-# LOGS =
-LOGS = -DLOGS
+LOGS =
+# LOGS = -DLOGS
 
 TARGET = $(BIN_DIR)/main
 DEBUG = $(BIN_DIR)/debug
@@ -32,7 +32,7 @@ DEBUG = $(BIN_DIR)/debug
 all: main
 
 main: $(TARGET) xdwayland-scanner
-main: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -O2
+main: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter
 
 debug: $(DEBUG) xdwayland-scanner
 debug: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -g
