@@ -4,10 +4,10 @@
 #include "xdwayland-core.h"
 #include "xdwayland-structs.h"
 #include "xdwayland-utils.h"
-
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/socket.h>
 
 xdwl_map *__xdwl_interfaces = NULL;
@@ -108,7 +108,7 @@ xdwl_proxy *xdwl_proxy_create() {
 
   char socket_path[socket_path_len];
   snprintf(socket_path, socket_path_len, "%s/%s", xdg_dir, display);
-  memcpy(sock_addr.sun_path, socket_path, socket_path_len);
+  strncpy(sock_addr.sun_path, socket_path, sizeof(sock_addr.sun_path) - 1);
 
   int connect_status =
       connect(sock_fd, (struct sockaddr *)&sock_addr, sizeof(sock_addr));

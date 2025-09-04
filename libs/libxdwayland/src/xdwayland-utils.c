@@ -157,35 +157,35 @@ void write_args(char *buffer, size_t *offset, xdwl_arg *args, size_t arg_count,
   }
 }
 
-void buf_write_u32(void *buf, size_t *buf_size, uint32_t n) {
-  *(uint32_t *)(buf + *buf_size) = n;
-  *buf_size += sizeof(n);
+void buf_write_u32(void *buf, size_t *offset, uint32_t n) {
+  *(uint32_t *)(buf + *offset) = n;
+  *offset += sizeof(n);
 }
 
-void buf_write_u16(void *buf, size_t *buf_size, uint16_t n) {
-  *(uint16_t *)(buf + *buf_size) = n;
-  *buf_size += sizeof(n);
+void buf_write_u16(void *buf, size_t *offset, uint16_t n) {
+  *(uint16_t *)(buf + *offset) = n;
+  *offset += sizeof(n);
 }
 
-uint32_t buf_read_u32(void *buf, size_t *buf_size) {
-  uint32_t value = *(uint32_t *)(buf + *buf_size);
-  *buf_size += sizeof(value);
+uint32_t buf_read_u32(void *buf, size_t *offset) {
+  uint32_t value = *(uint32_t *)(buf + *offset);
+  *offset += sizeof(value);
 
   return value;
 }
 
-uint16_t buf_read_u16(void *buf, size_t *buf_size) {
-  uint16_t value = *(uint16_t *)(buf + *buf_size);
-  *buf_size += sizeof(value);
+uint16_t buf_read_u16(void *buf, size_t *offset) {
+  uint16_t value = *(uint16_t *)(buf + *offset);
+  *offset += sizeof(value);
 
   return value;
 }
 
-char *buf_read_string(void *buf, size_t *buf_size) {
-  uint32_t string_length = *(uint32_t *)(buf + *buf_size);
-  *buf_size += sizeof(string_length);
+char *buf_read_string(void *buf, size_t *offset) {
+  uint32_t string_length = *(uint32_t *)(buf + *offset);
+  *offset += sizeof(string_length);
 
-  char *string = (char *)(buf + *buf_size);
+  char *string = (char *)(buf + *offset);
   return string;
 }
 
@@ -199,15 +199,9 @@ uint16_t calculate_body_size(xdwl_arg *args, size_t arg_count,
 
     switch (arg_signature) {
     case 'i':
-      body_size += sizeof(int32_t);
-      break;
-
     case 'u':
-      body_size += sizeof(uint32_t);
-      break;
-
     case 'f':
-      body_size += sizeof(float);
+      body_size += sizeof(uint32_t);
       break;
 
     case 's':

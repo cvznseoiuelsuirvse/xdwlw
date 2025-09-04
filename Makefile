@@ -17,32 +17,46 @@ PROTOCOL_SRCS = \
     xdg-output-unstable-v1-protocol.c \
     viewporter-protocol.c
 
-SRCS = $(PROTOCOL_SRCS) $(wildcard $(SRC_DIR)/*.c) $(wildcard $(LIBS_DIR)/*/src/*.c)
-OBJS = $(SRCS:%.c=$(DIST_DIR)/%.o)
 
+MAIN_SRCS = $(SRC_DIR)/ipc.c $(SRC_DIR)/main.c
+MAIN_OBJS = $(MAIN_SRCS:%.c=$(DIST_DIR)/%.o)
+
+DAEMON_SRCS = $(PROTOCOL_SRCS) $(SRC_DIR)/handlers.c $(SRC_DIR)/ipc.c $(SRC_DIR)/outputs.c $(SRC_DIR)/daemon.c $(wildcard $(LIBS_DIR)/*/src/*.c)
+DAEMON_OBJS = $(DAEMON_SRCS:%.c=$(DIST_DIR)/%.o)
 
 LOGS =
 # LOGS = -DLOGS
 
-TARGET = $(BIN_DIR)/main
-DEBUG = $(BIN_DIR)/debug
+MAIN = $(BIN_DIR)/xdwlw
+DAEMON = $(BIN_DIR)/xdwlwd
+
+MAIN_DEBUG = $(BIN_DIR)/debug
+DAEMON_DEBUG = $(BIN_DIR)/debugd
 
 .PHONY: all clean debug main xdwayland-scanner
 
 all: main
 
-main: $(TARGET) xdwayland-scanner
+main: $(MAIN) $(DAEMON) xdwayland-scanner
 main: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter
 
-debug: $(DEBUG) xdwayland-scanner
+debug: $(MAIN_DEBUG) $(DAEMON_DEBUG) xdwayland-scanner
 debug: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -g
 
 
-$(TARGET): $(OBJS)
+$(MAIN): $(MAIN_OBJS)
 	mkdir -p $(dir $@)
 	$(CC) -o $@ $^ $(LDLIBS)
 
-$(DEBUG): $(SRCS)
+$(DAEMON): $(DAEMON_OBJS)
+	mkdir -p $(dir $@)
+	$(CC) -o $@ $^ $(LDLIBS)
+
+$(MAIN_DEBUG): $(MAIN_SRCS)
+	mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS -o $@ $^ $(LDLIBS)
+
+$(DAEMON_DEBUG): $(DAEMON_SRCS)
 	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS -o $@ $^ $(LDLIBS)
 
