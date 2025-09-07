@@ -1,18 +1,25 @@
 #include "../wlr-layer-shell-unstable-v1-protocol.h"
-#include "structs.h"
-#include "xdwayland-utils.h"
+#include "xdwlw-types.h"
+
+#include <assert.h>
 
 extern xdwl_proxy *proxy;
-void _log(const char *level, const char *message, ...);
 
-void handle_zwlr_layer_surface_v1_configure(void *data, xdwl_arg *args) {
+void handle_zwlr_layer_surface_v1_configure(void *_, xdwl_arg *args) {
   uint32_t serial = args[0].u;
   xdzwlr_layer_surface_v1_ack_configure(proxy, serial);
 };
 
-void handle_wl_buffer_release(void *output, xdwl_arg *args) {
-  ((struct output *)output)->busy = false;
-  _log("INFO", "%s buffer released", ((struct output *)output)->name);
+void handle_wl_buffer_release(void *output, xdwl_arg *_) {
+  struct output *o = output;
+  munmap(o->buffer, o->width * o->height * BPP);
+  o->buffer = NULL;
+
+  close(o->fd);
+  o->fd = 0;
+
+  assert(xdwl_object_unregister_last(proxy, "wl_buffer") == 0);
+  xdwlw_log("info", "released %s buffer", o->name);
 }
 
 void handle_wl_registry_global(void *globals, xdwl_arg *args) {
@@ -22,23 +29,23 @@ void handle_wl_registry_global(void *globals, xdwl_arg *args) {
   global.interface = malloc(interface_len);
   memcpy(global.interface, args[1].s, interface_len);
 
-  xdwl_list_push(globals, &global, sizeof(struct wl_global));
+  assert(xdwl_list_push(globals, &global, sizeof(struct wl_global)) != NULL);
 }
 
-void handle_wl_display_error(void *data, xdwl_arg *args) {
+void handle_wl_display_error(void *_, xdwl_arg *args) {
   uint32_t object_id = args[0].u;
   uint32_t code = args[1].u;
 
   const char *message = args[2].s;
-  const xdwl_object *object = object_get_by_id(proxy, object_id);
+  const xdwl_object *object = xdwl_object_get_by_id(proxy, object_id);
   const char *object_name = object->name;
 
   printf("%s#%d ERROR %d: %s\n", object_name, object_id, code, message);
 }
 
-void handle_wl_display_delete_id(void *data, xdwl_arg *args) {
+void handle_wl_display_delete_id(void *_, xdwl_arg *args) {
   size_t object_id = args[0].u;
-  object_unregister(proxy, object_id);
+  assert(xdwl_object_unregister(proxy, object_id) == 0);
 };
 
 void handle_xdg_output_logical_size(void *output, xdwl_arg *args) {

@@ -18,10 +18,10 @@ PROTOCOL_SRCS = \
     viewporter-protocol.c
 
 
-MAIN_SRCS = $(SRC_DIR)/ipc.c $(SRC_DIR)/main.c
+MAIN_SRCS = $(SRC_DIR)/xdwlw-ipc.c $(SRC_DIR)/xdwlw.c $(SRC_DIR)/xdwlw-error.c
 MAIN_OBJS = $(MAIN_SRCS:%.c=$(DIST_DIR)/%.o)
 
-DAEMON_SRCS = $(PROTOCOL_SRCS) $(SRC_DIR)/handlers.c $(SRC_DIR)/ipc.c $(SRC_DIR)/outputs.c $(SRC_DIR)/daemon.c $(wildcard $(LIBS_DIR)/*/src/*.c)
+DAEMON_SRCS = $(PROTOCOL_SRCS) $(SRC_DIR)/xdwlw-handlers.c $(SRC_DIR)/xdwlw-ipc.c $(SRC_DIR)/xdwlw-outputs.c $(SRC_DIR)/xdwlwd.c $(SRC_DIR)/xdwlw-error.c $(wildcard $(LIBS_DIR)/*/src/*.c)
 DAEMON_OBJS = $(DAEMON_SRCS:%.c=$(DIST_DIR)/%.o)
 
 LOGS =

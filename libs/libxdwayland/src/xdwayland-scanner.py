@@ -41,7 +41,7 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
         else:
             method = ""
 
-        method += f"void xd{interface_name}_{request_name}(xdwl_proxy *proxy, "
+        method += f"int xd{interface_name}_{request_name}(xdwl_proxy *proxy, "
 
         args = []
 
@@ -79,10 +79,10 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
         if not header:
             method += " {\n"
             if args:
-                method += f'    xdwl_send_request(proxy, "{interface_name}", {i}, {len(args)}, {", ".join(args)});\n'
+                method += f'    return xdwl_send_request(proxy, "{interface_name}", {i}, {len(args)}, {", ".join(args)});\n'
 
             else:
-                method += f'    xdwl_send_request(proxy, "{interface_name}", {i}, 0);\n'
+                method += f'    return xdwl_send_request(proxy, "{interface_name}", {i}, 0);\n'
             method += "}"
 
         method += ";"
@@ -94,11 +94,11 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
 
 def generate_add_listener(interface_name: str, *, header: bool) -> str:
     if header:
-        listener = f"void xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name} *interface, void *user_data);"
+        listener = f"__must_check int xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name} *interface, void *user_data);"
 
     else:
-        listener = f"""void xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name} *interface, void *user_data) {{
-      xdwl_add_listener(proxy, \"{interface_name}\", interface, user_data);
+        listener = f"""int xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name} *interface, void *user_data) {{
+      return xdwl_add_listener(proxy, \"{interface_name}\", interface, user_data);
     }};"""
 
     return listener
@@ -202,8 +202,7 @@ def generate(input: str, output_path_base: str) -> None:
     )
 
     c.write(
-        f"""#include "xdwayland-client.h"
-#include "{os.path.basename(output_path_base)}.h"
+        f"""#include "xdwayland-private.h"
 
 """
     )

@@ -52,4 +52,21 @@ typedef struct xdwl_object {
 
 typedef void(xdwl_event_handler)(void *, xdwl_arg *);
 
+enum xdwl_errors {
+  XDWLERR_STD = 1,
+  XDWLERR_ENV,
+  XDWLERR_IDTAKEN,
+  XDWLERR_NULLARG,
+  XDWLERR_NULLOBJ,
+  XDWLERR_NULLREQ,
+  XDWLERR_NULLEVENT,
+  XDWLERR_NULLINTF,
+  XDWLERR_SOCKCONN,
+  XDWLERR_SOCKSEND,
+  XDWLERR_SOCKRECV,
+  XDWLERR_NOFREEBIT,
+  XDWLERR_OUTOFRANGE,
+  XDWLERR_NOPROTOXML,
+};
+
 #endif

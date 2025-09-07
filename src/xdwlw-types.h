@@ -1,9 +1,7 @@
-#ifndef STRUCTS_H
-#define STRUCTS_H
+#ifndef XDWLW_TYPES_H
+#define XDWLW_TYPES_H
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <unistd.h>
+#include "xdwlw-common.h"
 
 #define STREQ(s1, s2) strcmp(s1, s2) == 0
 #define COLOR(hex)                                                             \
@@ -14,6 +12,7 @@ enum non_core_interfaces {
   WP_VIEWPORTER = 1,
   ZWLR_LAYER_SHELL_V1 = 1 << 1,
   ZXDG_OUTPUT_MANAGER_V1 = 1 << 2,
+  ZWLR_OUTPUT_POWER_MANAGER_V1 = 1 << 3,
 };
 
 enum image_modes {
@@ -35,13 +34,6 @@ enum ipc_message_types {
   IPC_SERVER_ERR = 0x2,
 };
 
-enum ipc_errors {
-  IPC_ERR_UNSUPPORTED_FORMAT = 0x10,
-  IPC_ERR_INVALID_COLOR = 0x20,
-  IPC_ERR_INVALID_IMAGE_FIT_MODE = 0x30,
-  IPC_ERR_IMAGE_NOT_FOUND = 0x40,
-};
-
 struct wl_global {
   uint32_t name;
   char *interface;
@@ -51,19 +43,21 @@ struct wl_global {
 struct output {
   int id;
   char *name;
+
   uint32_t width;
   uint32_t height;
   uint32_t logical_width;
   uint32_t logical_height;
+
+  uint32_t *buffer;
   int fd;
-  bool busy;
+  uint8_t busy;
 };
 
 struct ipc_message {
   enum ipc_message_types type;
   union {
     struct {
-      enum ipc_errors code;
       const char *msg;
     } error;
 

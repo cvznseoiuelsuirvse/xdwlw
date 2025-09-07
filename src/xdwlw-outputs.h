@@ -1,5 +1,5 @@
-#ifndef OUTPUTS_H
-#define OUTPUTS_H
+#ifndef XDWLW_OUTPUTS_H
+#define XDWLW_OUTPUTS_H
 
 #include "xdwayland-client.h"
 #include "xdwayland-collections.h"
