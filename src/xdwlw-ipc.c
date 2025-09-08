@@ -1,3 +1,4 @@
+#include "xdwlw-error.h"
 #include "xdwlw-types.h"
 
 #include <linux/limits.h>
@@ -78,6 +79,7 @@ int ipc_client_connect() {
 
   if (connect(fd, (struct sockaddr *)&sock_addr, sizeof(sock_addr)) < 0) {
     perror("connect");
+    xdwlw_error_set(XDWLWE_DCONN, "xdwlw: failed to connect to daemon");
     return -1;
   }
 
@@ -99,7 +101,8 @@ struct ipc_message *ipc_client_recv(int sfd) {
 
   switch (msg->type) {
   case IPC_SERVER_ERR:
-    msg->error.msg = buf_read_string(buffer, &offset);
+    snprintf(msg->error.msg, sizeof(msg->error.msg), "%s",
+             buf_read_string(buffer, &offset));
     return msg;
 
   default:
@@ -264,10 +267,6 @@ void ipc_message_free(struct ipc_message *msg) {
 
   case IPC_CLIENT_SET_COLOR:
     free((char *)msg->set_color.output);
-    break;
-
-  case IPC_SERVER_ERR:
-    free((char *)msg->error.msg);
     break;
 
   default:

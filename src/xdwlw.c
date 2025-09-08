@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
   struct ipc_message *resp;
 
   uint8_t kill = 0;
-  char *output = NULL;
+  char *output_name = NULL;
 
   char image_path[PATH_MAX];
   enum image_modes image_mode = 0;
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
         return 1;
       }
 
-      output = optarg;
+      output_name = optarg;
       break;
 
     case 'm':
@@ -133,19 +133,19 @@ int main(int argc, char **argv) {
     }
   }
 
-  if (output == NULL) {
-    output = "all";
+  if (output_name == NULL) {
+    output_name = "all";
   }
 
   if (image_path[0] != '\0' && image_mode != 0) {
     msg.type = IPC_CLIENT_SET_IMAGE;
-    msg.set_image.output = output;
+    msg.set_image.output = output_name;
     msg.set_image.mode = image_mode;
     msg.set_image.path = image_path;
 
   } else if (color != -1) {
     msg.type = IPC_CLIENT_SET_COLOR;
-    msg.set_color.output = output;
+    msg.set_color.output = output_name;
     msg.set_color.color = color;
 
   } else if (kill > 0) {
@@ -157,7 +157,6 @@ int main(int argc, char **argv) {
 
   int fd = ipc_client_connect();
   if (fd < 0) {
-    xdwlw_error_set(XDWLWE_DCONN, "xdwlw: failed to connect to daemon");
     xdwlw_error_print();
     return 1;
   }
@@ -170,7 +169,7 @@ int main(int argc, char **argv) {
 
   switch (resp->type) {
   case IPC_SERVER_ERR:
-    fprintf(stderr, "xdwlwd: %s", resp->error.msg);
+    fprintf(stderr, "xdwlwd: %s\n", resp->error.msg);
     return 1;
 
   case IPC_ACK:

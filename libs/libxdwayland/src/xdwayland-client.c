@@ -1,5 +1,4 @@
-#include "xdwayland-client.h"
-#include "xdwayland-collections.h"
+#include "xdwayland-common.h"
 #include "xdwayland-core.h"
 #include "xdwayland-private.h"
 #include "xdwayland-types.h"
@@ -12,14 +11,16 @@
 #define SERVER_IDS_END 0xFFFFFFFF
 #define MAX_SERVER_IDS_SIZE ((SERVER_IDS_END - SERVER_IDS_START) + 1)
 
-static xdwl_map *__xdwl_interfaces = NULL;
 static xdwl_map *__xdwl_listeners = NULL;
+
+extern const struct xdwl_interface __start_xdwl_interfaces[];
+extern const struct xdwl_interface __stop_xdwl_interfaces[];
 
 static xdwl_bitmap *__client_id_pool = NULL;
 static xdwl_bitmap *__server_id_pool = NULL;
 
-__must_check static int xdwl_dispatch_message(xdwl_proxy *proxy,
-                                              xdwl_raw_message *raw_message) {
+XDWL_MUST_CHECK static int
+xdwl_dispatch_message(xdwl_proxy *proxy, xdwl_raw_message *raw_message) {
   xdwl_object *object = xdwl_object_get_by_id(proxy, raw_message->object_id);
   if (object == NULL) {
     xdwl_error_set(XDWLERR_NULLOBJ,
@@ -28,33 +29,42 @@ __must_check static int xdwl_dispatch_message(xdwl_proxy *proxy,
     return -1;
   }
 
-  struct xdwl_method *event =
-      xdwl_list_get(object->interface->events, raw_message->method_id);
-
-  if (event == NULL) {
+  if (object->interface->events == NULL) {
     xdwl_error_set(XDWLERR_NULLEVENT,
                    "xdwl_dispatch_message: no event found for %s#%ld",
                    object->name, raw_message->method_id);
     return -1;
   }
 
-  char *event_signature = event->signature;
-  xdwl_arg *args = xdwl_read_args(raw_message, event_signature);
+  struct xdwl_method event = object->interface->events[raw_message->method_id];
+
+  char *event_signature = event.signature;
+  xdwl_arg *args;
+
+  if (event_signature != NULL) {
+    args = xdwl_read_args(raw_message, event_signature);
+  } else {
+    args = NULL;
+  }
 
 #ifdef LOGS
   const char *object_name = object->name;
   xdwl_log("INFO", "<- %s.#%ld.%s", object_name, raw_message->object_id,
-           event->name);
-  xdwl_show_args(args, event_signature);
+           event.name);
+  if (event_signature != NULL) {
+    xdwl_show_args(args, event_signature);
+  } else {
+    printf("()\n");
+  }
 #endif
 
   struct xdwl_listener *listener =
       xdwl_map_get(__xdwl_listeners, raw_message->object_id);
 
   if (listener) {
-    void **interface_ptr = listener->interface;
+    void **handlers_ptr = listener->event_handlers;
 
-    xdwl_event_handler *handler = interface_ptr[raw_message->method_id];
+    xdwl_event_handler *handler = handlers_ptr[raw_message->method_id];
     if (handler == NULL) {
       return 0;
     }
@@ -66,7 +76,18 @@ __must_check static int xdwl_dispatch_message(xdwl_proxy *proxy,
   return 0;
 };
 
-static void destroy_objects(xdwl_proxy *proxy) {
+static const struct xdwl_interface *
+xdwl_lookup_interfaces(const char *interface_name) {
+  for (const struct xdwl_interface *iface = __start_xdwl_interfaces;
+       iface < __stop_xdwl_interfaces; iface++) {
+    if (strcmp(iface->name, interface_name) == 0) {
+      return iface;
+    }
+  }
+  return NULL;
+}
+
+static void xdwl_destroy_objects(xdwl_proxy *proxy) {
   for (size_t i = 0; i < proxy->obj_reg->size; i++) {
     struct xdwl_map_pair *p = proxy->obj_reg->pairs[i];
     for (; p; p = p->next) {
@@ -78,34 +99,7 @@ static void destroy_objects(xdwl_proxy *proxy) {
   xdwl_map_destroy(proxy->obj_reg);
 }
 
-static void destroy_interfaces() {
-  for (size_t i = 0; i < __xdwl_interfaces->size; i++) {
-    struct xdwl_map_pair *p = __xdwl_interfaces->pairs[i];
-
-    for (; p; p = p->next) {
-      struct xdwl_interface *interface = p->value;
-
-      for (xdwl_list *l = interface->events; l->next; l = l->next) {
-        struct xdwl_method *method = l->data;
-        free(method->name);
-        free(method->signature);
-      }
-      xdwl_list_destroy(interface->events);
-
-      for (xdwl_list *l = interface->requests; l->next; l = l->next) {
-        struct xdwl_method *method = l->data;
-        free(method->name);
-        free(method->signature);
-      }
-      xdwl_list_destroy(interface->requests);
-
-      free(interface);
-    }
-  }
-  xdwl_map_destroy(__xdwl_interfaces);
-};
-
-__must_check static int xdwl_object_init() {
+XDWL_MUST_CHECK static int xdwl_object_init() {
   __client_id_pool = xdwl_bitmap_new(MAX_CLIENT_IDS_SIZE);
   if (!__client_id_pool)
     return -1;
@@ -207,12 +201,11 @@ int xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
       return -1;
   }
 
-  struct xdwl_interface *interface =
-      xdwl_map_get_str(__xdwl_interfaces, object_name);
+  const struct xdwl_interface *interface = xdwl_lookup_interfaces(object_name);
   if (interface == NULL) {
     xdwl_error_set(XDWLERR_NULLINTF,
-                   "xdwl_object_register: failed to register object %s.#%d. no "
-                   "interfaces found for %s object",
+                   "xdwl_object_register: failed to register object %s.#%d. %s "
+                   "interface not found",
                    object_name, o, object_name);
     return -1;
   }
@@ -264,25 +257,6 @@ int xdwl_object_unregister_last(xdwl_proxy *proxy, const char *object_name) {
                  "found with name '%s'",
                  object_name, object_name);
   return -1;
-}
-
-__must_check inline int xdwl_load_interfaces(const char *xml_path) {
-  xmlDocPtr doc = xmlReadFile(xml_path, NULL, 0);
-  if (doc == NULL) {
-    xdwl_error_set(XDWLERR_NOPROTOXML, "xdwl_parse: %s not found", xml_path);
-    return -1;
-  }
-
-  xmlNodePtr cur = xmlDocGetRootElement(doc);
-
-  for (xmlNodePtr c = cur->children; c; c = c->next) {
-    if (c->type == XML_ELEMENT_NODE &&
-        xmlStrEqual(c->name, TO_XMLSTRING("interface"))) {
-      if (xdwl_parse_interface(c, __xdwl_interfaces) == -1)
-        return -1;
-    }
-  }
-  return 0;
 }
 
 xdwl_proxy *xdwl_proxy_create() {
@@ -343,12 +317,10 @@ xdwl_proxy *xdwl_proxy_create() {
   if (__xdwl_listeners == NULL)
     return NULL;
 
-  __xdwl_interfaces = xdwl_map_new(CAP);
-  if (__xdwl_interfaces == NULL)
-    return NULL;
-
-  if (xdwl_load_interfaces("/usr/share/wayland/wayland.xml") == -1)
-    return NULL;
+  for (const struct xdwl_interface *iface = __start_xdwl_interfaces;
+       iface < __stop_xdwl_interfaces; iface++) {
+    printf("%s\n", iface->name);
+  }
 
   return proxy;
 }
@@ -359,27 +331,21 @@ void xdwl_proxy_destroy(xdwl_proxy *proxy) {
       free(proxy->buffer);
 
     if (proxy->obj_reg != NULL)
-      destroy_objects(proxy);
+      xdwl_destroy_objects(proxy);
 
     close(proxy->sockfd);
     free(proxy);
   }
 
-  if (__xdwl_interfaces != NULL)
-    destroy_interfaces();
-
   if (__xdwl_listeners != NULL)
     xdwl_map_destroy(__xdwl_listeners);
 
   if (__client_id_pool != NULL)
-    xdwl_bitmap_destroy(__client_id_pool);
-
-  if (__server_id_pool != NULL)
-    xdwl_bitmap_destroy(__server_id_pool);
+    xdwl_object_destroy();
 };
 
 int xdwl_add_listener(xdwl_proxy *proxy, const char *object_name,
-                      void *interface, void *user_data) {
+                      void *event_handlers, void *user_data) {
 
   xdwl_object *object = xdwl_object_get_by_name(proxy, object_name);
   if (!object) {
@@ -391,7 +357,7 @@ int xdwl_add_listener(xdwl_proxy *proxy, const char *object_name,
   }
 
   struct xdwl_listener listener = {.user_data = user_data,
-                                   .interface = interface};
+                                   .event_handlers = event_handlers};
   size_t object_id = object->id;
   if (xdwl_map_set(__xdwl_listeners, object_id, &listener,
                    sizeof(struct xdwl_listener)) == NULL)
@@ -438,17 +404,16 @@ int xdwl_send_request(xdwl_proxy *proxy, char *object_name, size_t method_id,
   }
   size_t object_id = object->id;
 
-  struct xdwl_method *request =
-      xdwl_list_get(object->interface->requests, method_id);
-
-  if (request == NULL) {
+  if (object->interface->requests == NULL) {
     xdwl_error_set(XDWLERR_NULLREQ,
                    "xdwl_send_request: no request found for %s#%ld",
                    object->name, method_id);
     return -1;
   }
 
-  char *request_signature = request->signature;
+  struct xdwl_method request = object->interface->requests[method_id];
+
+  char *request_signature = request.signature;
   xdwl_arg request_args[arg_count];
   int fd = 0;
 
@@ -485,9 +450,12 @@ int xdwl_send_request(xdwl_proxy *proxy, char *object_name, size_t method_id,
   }
 
 #ifdef LOGS
-  xdwl_log("INFO", "-> %s.#%ld.%s", object_name, object_id, request->name);
-  xdwl_show_args(request_args, request_signature);
-  fflush(stdout);
+  xdwl_log("INFO", "-> %s.#%ld.%s", object_name, object_id, request.name);
+  if (request_signature != NULL) {
+    xdwl_show_args(request_args, request_signature);
+  } else {
+    printf("()\n");
+  }
 #endif
 
   size_t message_size =

@@ -1,6 +1,10 @@
 #include "xdwayland-client.h"
 #include "xdwayland-collections.h"
 #include "xdwayland-core.h"
+#include "xdwayland-types.h"
+#include "xdwlw-common.h"
+#include <stdint.h>
+#include <sys/mman.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -26,11 +30,8 @@ int sfd;
 xdwl_proxy *proxy;
 xdwl_list *global_listeners;
 
-void handle_zwlr_layer_surface_v1_configure(void *data, xdwl_arg *args);
-void handle_wl_display_delete_id(void *data, xdwl_arg *args);
-void handle_wl_display_error(void *data, xdwl_arg *args);
-void handle_wl_registry_global(void *globals, xdwl_arg *args);
-void handle_wl_buffer_release(void *globals, xdwl_arg *args);
+void create_output_buffer(struct output *o);
+void destroy_output_buffer(struct output *o);
 
 void xdwlw_exit() {
   int xdwl_err = xdwl_error_get_code();
@@ -51,6 +52,81 @@ void xdwlw_exit() {
   exit(xdwl_err || xdwlw_err);
 }
 
+void handle_zwlr_layer_surface_v1_configure(void *output, xdwl_arg *args) {
+  struct output *o = output;
+
+  uint32_t serial = args[0].u;
+  uint32_t width = args[1].u;
+  uint32_t height = args[2].u;
+
+  xdzwlr_layer_surface_v1_ack_configure(proxy, serial);
+
+  if (o->width != width || o->height != height) {
+    destroy_output_buffer(o);
+
+    o->width = width;
+    o->height = height;
+  }
+
+  if (o->buffer == NULL) {
+    create_output_buffer(o);
+  }
+}
+
+void handle_wl_buffer_release(void *output, xdwl_arg *_) {
+  struct output *o = output;
+  xdwlw_log("info", "%s buffer released", o->name);
+  // destroy_output_buffer((struct output *)output);
+}
+
+void handle_wl_registry_global(void *globals, xdwl_arg *args) {
+  struct wl_global global = {.name = args[0].u, .version = args[2].u};
+
+  size_t interface_len = strlen(args[1].s) + 1;
+  global.interface = malloc(interface_len);
+  memcpy(global.interface, args[1].s, interface_len);
+
+  assert(xdwl_list_push(globals, &global, sizeof(struct wl_global)) != NULL);
+}
+
+void handle_wl_display_error(void *_, xdwl_arg *args) {
+  uint32_t object_id = args[0].u;
+  uint32_t code = args[1].u;
+
+  const char *message = args[2].s;
+  const xdwl_object *object = xdwl_object_get_by_id(proxy, object_id);
+  const char *object_name = object->name;
+
+  printf("%s#%d ERROR %d: %s\n", object_name, object_id, code, message);
+}
+
+void handle_wl_display_delete_id(void *_, xdwl_arg *args) {
+  size_t object_id = args[0].u;
+  assert(xdwl_object_unregister(proxy, object_id) == 0);
+};
+
+void handle_xdg_output_logical_size(void *output, xdwl_arg *args) {
+  ((struct output *)output)->logical_width = args[0].i;
+  ((struct output *)output)->logical_height = args[1].i;
+};
+
+void handle_xdg_output_name(void *output, xdwl_arg *args) {
+  ((struct output *)output)->name = strdup(args[0].s);
+};
+
+void handle_wl_output_mode(void *outputs, xdwl_arg *args) {
+  static size_t output_index = 0;
+  struct output *o = xdwl_list_get(outputs, output_index);
+
+  if (o) {
+    o->width = args[1].i;
+    o->height = args[2].i;
+  } else {
+    printf("warning: no output found with index %ld\n", output_index);
+  }
+
+  output_index++;
+};
 uint32_t *resize_image_nni(uint32_t *i_buffer, size_t i_width, size_t i_height,
                            size_t o_width, size_t o_height) {
 
@@ -101,10 +177,12 @@ size_t bind_globals(xdwl_proxy *proxy, xdwl_list **globals) {
 
   size_t wl_registry_id = xdwl_object_register(proxy, 0, "wl_registry");
 
-  struct xdwl_registry *wl_registry = xdwl_list_push(
-      global_listeners,
-      &(struct xdwl_registry){.global = handle_wl_registry_global},
-      sizeof(struct xdwl_registry));
+  struct xdwl_registry_event_handlers *wl_registry =
+      xdwl_list_push(global_listeners,
+                     &(struct xdwl_registry_event_handlers){
+                         .global = handle_wl_registry_global},
+                     sizeof(struct xdwl_registry_event_handlers));
+
   ensure_result(xdwl_registry_add_listener(proxy, wl_registry, *globals));
 
   xdwl_display_get_registry(proxy, wl_registry_id);
@@ -117,25 +195,30 @@ size_t bind_globals(xdwl_proxy *proxy, xdwl_list **globals) {
   for (l = *globals, i = 0; l->next; i++, l = l->next) {
     struct wl_global *g = l->data;
 
-    size_t new_id = 0;
+    int new_id = 0;
     if (STREQ(g->interface, "wl_shm") || STREQ(g->interface, "wl_compositor")) {
       new_id = xdwl_object_register(proxy, 0, g->interface);
+      if (new_id == -1) {
+        xdwlw_error_set(XDWLWE_NOINTF, "failed to register %s", g->interface);
+        xdwlw_exit();
+      }
 
     } else if (STREQ(g->interface, "wp_viewporter")) {
-      ensure_result(xdwl_load_interfaces(
-          "/usr/share/wayland-protocols/stable/viewporter/viewporter.xml"));
       new_id = xdwl_object_register(proxy, 0, g->interface);
+      if (new_id == -1) {
+        xdwlw_error_set(XDWLWE_NOINTF, "failed to register %s", g->interface);
+        xdwlw_exit();
+      }
+
       n &= ~WP_VIEWPORTER;
 
     } else if (STREQ(g->interface, "zwlr_layer_shell_v1")) {
-      ensure_result(
-          xdwl_load_interfaces("./protocols/wlr-layer-shell-unstable-v1.xml"));
       new_id = xdwl_object_register(proxy, 0, g->interface);
       n &= ~ZWLR_LAYER_SHELL_V1;
     }
+
     if (new_id > 0) {
       xdwl_registry_bind(proxy, g->name, g->interface, g->version, new_id);
-
       ensure_result(xdwl_roundtrip(proxy));
       xdwl_list_remove(globals, i);
     }
@@ -144,165 +227,43 @@ size_t bind_globals(xdwl_proxy *proxy, xdwl_list **globals) {
   return n;
 };
 
-void init_buffer(struct output *o) {
-  char name[255];
-  snprintf(name, 255, "xdwlw-shm-%x", rand());
-
-  int32_t buffer_size = o->width * o->height * BPP;
-
-  int fd = shm_open(name, O_RDWR | O_EXCL | O_CREAT, 0600);
-  shm_unlink(name);
-
-  if (fd == -1) {
-    perror("shm_open");
-    return;
+void commit(struct output *o) {
+  xdwl_object *wl_buffer_object = xdwl_object_get_by_name(proxy, "wl_buffer");
+  if (!wl_buffer_object) {
+    xdwlw_exit();
   }
 
-  if (ftruncate(fd, buffer_size) == -1) {
-    perror("ftruncate");
-    return;
-  }
-
-  struct xdwl_object *wl_shm_pool_object;
-  size_t wl_shm_pool_id;
-
-  wl_shm_pool_object = xdwl_object_get_by_name(proxy, "wl_shm_pool");
-  if (wl_shm_pool_object != NULL) {
-    xdwl_shm_pool_destroy(proxy);
-    ensure_result(xdwl_roundtrip(proxy));
-  }
-
-  wl_shm_pool_id = xdwl_object_register(proxy, 0, "wl_shm_pool");
-  xdwl_shm_create_pool(proxy, wl_shm_pool_id, fd, buffer_size);
-  ensure_result(xdwl_roundtrip(proxy));
-
-  size_t wl_buffer_id = xdwl_object_register(proxy, 0, "wl_buffer");
-  struct xdwl_buffer *wl_buffer =
-      xdwl_list_push(global_listeners,
-                     &(struct xdwl_buffer){.release = handle_wl_buffer_release},
-                     sizeof(struct xdwl_buffer));
-  ensure_result(xdwl_buffer_add_listener(proxy, wl_buffer, o));
-
-  xdwl_shm_pool_create_buffer(proxy, wl_buffer_id, 0, o->width, o->height,
-                              o->width * BPP, XDWL_SHM_FORMAT_ARGB8888);
-  ensure_result(xdwl_roundtrip(proxy));
-
-  uint32_t *buffer =
-      mmap(NULL, buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-
-  if (buffer == MAP_FAILED) {
-    perror("mmap");
-    return;
-  }
-
-  xdwlw_log("info", "initialized buffer %s with a size of %d", name,
-            buffer_size);
-
-  xdwlw_log("debug", "fd: %d", fd);
-  o->buffer = buffer;
-  o->fd = fd;
-}
-
-void create_layer_surface(struct output *o) {
-  size_t wl_surface_id = xdwl_object_register(proxy, 0, "wl_surface");
-  size_t zwlr_layer_surface_v1_id =
-      xdwl_object_register(proxy, 0, "zwlr_layer_surface_v1");
-
-  struct xdzwlr_layer_surface_v1 *i =
-      xdwl_list_push(global_listeners,
-                     &(struct xdzwlr_layer_surface_v1){
-                         .configure = handle_zwlr_layer_surface_v1_configure},
-                     sizeof(struct xdzwlr_layer_surface_v1));
-  ensure_result(xdzwlr_layer_surface_v1_add_listener(proxy, i, NULL));
-
-  xdwl_compositor_create_surface(proxy, wl_surface_id);
-  xdzwlr_layer_shell_v1_get_layer_surface(
-      proxy, zwlr_layer_surface_v1_id, wl_surface_id, o->id,
-      XDZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND, o->name);
-
-  xdwlw_log("info", "created layer surface#%d for %s", zwlr_layer_surface_v1_id,
-            o->name);
-}
-
-void configure_layer_surface(struct output *o) {
-  xdzwlr_layer_surface_v1_set_anchor(proxy, XDZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
-  xdzwlr_layer_surface_v1_set_anchor(proxy,
-                                     XDZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
-
-  xdzwlr_layer_surface_v1_set_size(proxy, o->logical_width, o->logical_height);
-  xdzwlr_layer_surface_v1_set_exclusive_zone(proxy, -1);
-
-  xdwlw_log("info", "set %s layer surface size to: %dx%d", o->name,
-            o->logical_width, o->logical_height);
-
-  xdwl_surface_commit(proxy);
-  ensure_result(xdwl_roundtrip(proxy));
-};
-
-int setup_output(struct output *o) {
-  if (o->fd != 0 && o->buffer != NULL)
-    return 0;
-
-  if (o->busy == 0) {
-    create_layer_surface(o);
-    configure_layer_surface(o);
-    o->busy = 1;
-  }
-
-  init_buffer(o);
-  if (o->buffer == NULL) {
-    xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create buffer for %s output",
-                    o->name);
-    return -1;
-  }
-
-  return 0;
-}
-
-void attach_and_commit(struct output *o) {
-  xdwlw_log("debug", "buffer ptr: %p", o->buffer);
-  xdwl_object *wl_buffer = xdwl_object_get_by_name(proxy, "wl_buffer");
-  size_t wl_buffer_id = wl_buffer->id;
-
+  uint32_t wl_buffer_id = wl_buffer_object->id;
   xdwl_surface_attach(proxy, wl_buffer_id, 0, 0);
+  xdwl_surface_damage_buffer(proxy, 0, 0, o->width * BPP, o->height);
   xdwl_surface_commit(proxy);
-
   ensure_result(xdwl_roundtrip(proxy));
 }
 
 int draw_color_on_output(struct output *o, uint32_t color) {
-  int r = setup_output(o);
-  if (r != 0)
-    return 1;
-
   for (size_t i = 0; i < o->width * o->height; i++) {
     o->buffer[i] = color;
   }
-
-  attach_and_commit(o);
 
   int color_bytes[] = COLOR(color);
   xdwlw_log("info", "set new buffer color to #%02x%02x%02x%02x", color_bytes[1],
             color_bytes[2], color_bytes[3], color_bytes[0]);
 
+  commit(o);
   return 0;
 };
 
-int draw_image_on_output(struct output *o, const char *image_path,
-                         enum image_modes mode) {
-  int r = setup_output(o);
-  if (r != 0)
-    return 1;
-
+int draw_image_on_output(struct output *o) {
   int iw, ih, channels;
 
-  uint32_t *pixels = (uint32_t *)stbi_load(image_path, &iw, &ih, &channels, 4);
+  uint32_t *pixels =
+      (uint32_t *)stbi_load(o->image_path, &iw, &ih, &channels, 4);
 
   if (!pixels) {
-    xdwlw_error_set(XDWLWE_IMGOPEN, "failed to open %s", image_path);
+    xdwlw_error_set(XDWLWE_IMGOPEN, "failed to open %s", o->image_path);
     return 1;
   }
-  xdwlw_log("info", "loaded %s: %dx%d channels: %d", image_path, iw, ih,
+  xdwlw_log("info", "loaded %s: %dx%d channels: %d", o->image_path, iw, ih,
             channels);
 
   float sx, sy, scale;
@@ -310,7 +271,7 @@ int draw_image_on_output(struct output *o, const char *image_path,
 
   uint32_t *resized;
 
-  switch (mode) {
+  switch (o->image_mode) {
   case IMAGE_MODE_CENTER:
     sx = (float)o->width / iw;
     sy = (float)o->height / ih;
@@ -328,8 +289,8 @@ int draw_image_on_output(struct output *o, const char *image_path,
     resized = resize_image_nni(pixels, iw, ih, nw, nh);
     if (!resized) {
       xdwlw_error_set(XDWLWE_IMGRESIZE,
-                      "failed to resize %s from %dx%d to %dx%d", image_path, iw,
-                      ih, o->width, o->height);
+                      "failed to resize %s from %dx%d to %dx%d", o->image_path,
+                      iw, ih, o->width, o->height);
 
       stbi_image_free(pixels);
       return 1;
@@ -348,8 +309,8 @@ int draw_image_on_output(struct output *o, const char *image_path,
     resized = resize_image_nni(pixels, iw, ih, o->width, o->height);
     if (!resized) {
       xdwlw_error_set(XDWLWE_IMGRESIZE,
-                      "failed to resize %s from %dx%d to %dx%d", image_path, iw,
-                      ih, o->width, o->height);
+                      "failed to resize %s from %dx%d to %dx%d", o->image_path,
+                      iw, ih, o->width, o->height);
 
       stbi_image_free(pixels);
       return 1;
@@ -357,16 +318,18 @@ int draw_image_on_output(struct output *o, const char *image_path,
 
     memcpy(o->buffer, resized, o->width * o->height * BPP);
     break;
+
   default:
-    xdwlw_error_set(XDWLWE_IMGINVMODE, "invalid image mode: %c", mode);
+    xdwlw_error_set(XDWLWE_IMGINVMODE, "invalid image mode: %c", o->image_mode);
     return 1;
   }
 
   free(resized);
   stbi_image_free(pixels);
 
-  attach_and_commit(o);
-  xdwlw_log("info", "set %s on %s. mode: %c", image_path, o->name, mode);
+  commit(o);
+  xdwlw_log("info", "set %s on %s. mode: %c", o->image_path, o->name,
+            o->image_mode);
 
   return 0;
 };
@@ -381,11 +344,12 @@ xdwl_list *init() {
     return NULL;
 
   ensure_result(xdwl_object_register(proxy, 0, "wl_display"));
-  struct xdwl_display *wl_display = xdwl_list_push(
-      global_listeners,
-      &(struct xdwl_display){.delete_id = handle_wl_display_delete_id,
-                             .error = handle_wl_display_error},
-      sizeof(struct xdwl_display));
+  struct xdwl_display_event_handlers *wl_display =
+      xdwl_list_push(global_listeners,
+                     &(struct xdwl_display_event_handlers){
+                         .delete_id = handle_wl_display_delete_id,
+                         .error = handle_wl_display_error},
+                     sizeof(struct xdwl_display_event_handlers));
 
   ensure_result(xdwl_display_add_listener(proxy, wl_display, NULL));
 
@@ -412,10 +376,137 @@ xdwl_list *init() {
   return outputs;
 }
 
+void create_output_buffer(struct output *o) {
+  /* create buffer */
+  size_t wl_shm_pool_id;
+  size_t wl_buffer_id;
+
+  char name[255];
+  snprintf(name, 255, "xdwlw-shm-%x", rand());
+
+  int32_t buffer_size = o->width * o->height * BPP;
+
+  int fd = shm_open(name, O_RDWR | O_EXCL | O_CREAT, 0600);
+  shm_unlink(name);
+
+  if (fd == -1) {
+    perror("shm_open");
+    xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
+                    o->name);
+    xdwlw_exit();
+  }
+
+  if (ftruncate(fd, buffer_size) == -1) {
+    perror("ftruncate");
+    xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
+                    o->name);
+    xdwlw_exit();
+  }
+
+  struct xdwl_object *wl_shm_pool_object =
+      xdwl_object_get_by_name(proxy, "wl_shm_pool");
+
+  if (wl_shm_pool_object == NULL) {
+    wl_shm_pool_id = xdwl_object_register(proxy, 0, "wl_shm_pool");
+    xdwl_shm_create_pool(proxy, wl_shm_pool_id, fd, buffer_size);
+  } else {
+    wl_shm_pool_id = wl_shm_pool_object->id;
+  }
+
+  wl_buffer_id = xdwl_object_register(proxy, 0, "wl_buffer");
+  struct xdwl_buffer_event_handlers *wl_buffer = xdwl_list_push(
+      global_listeners,
+      &(struct xdwl_buffer_event_handlers){.release = handle_wl_buffer_release},
+      sizeof(struct xdwl_buffer_event_handlers));
+  ensure_result(xdwl_buffer_add_listener(proxy, wl_buffer, o));
+
+  xdwl_shm_pool_create_buffer(proxy, wl_buffer_id, 0, o->width, o->height,
+                              o->width * BPP, XDWL_SHM_FORMAT_ARGB8888);
+
+  uint32_t *buffer =
+      mmap(NULL, buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+  if (buffer == MAP_FAILED) {
+    perror("mmap");
+    xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
+                    o->name);
+    xdwlw_exit();
+  }
+
+  xdwlw_log("info", "initialized buffer %s with a size of %d", name,
+            buffer_size);
+
+  o->buffer = buffer;
+}
+
+void destroy_output_buffer(struct output *o) {
+  if (!o)
+    return;
+
+  munmap(o->buffer, o->width * o->height * BPP);
+  o->buffer = NULL;
+}
+
+void create_layer_surface(struct output *o) {
+  int wl_surface_id;
+  int wlr_layer_surface_id;
+
+  wl_surface_id = xdwl_object_register(proxy, 0, "wl_surface");
+  if (wl_surface_id == -1)
+    xdwlw_exit();
+
+  wlr_layer_surface_id =
+      xdwl_object_register(proxy, 0, "zwlr_layer_surface_v1");
+  if (wlr_layer_surface_id == -1)
+    xdwlw_exit();
+
+  if (xdwl_compositor_create_surface(proxy, wl_surface_id) == -1)
+    xdwlw_exit();
+
+  if (xdzwlr_layer_shell_v1_get_layer_surface(
+          proxy, wlr_layer_surface_id, wl_surface_id, o->id,
+          XDZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND, o->name) == -1)
+    xdwlw_exit();
+
+  xdzwlr_layer_surface_v1_set_size(proxy, o->logical_width, o->logical_height);
+
+  xdzwlr_layer_surface_v1_set_anchor(proxy, XDZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
+  xdzwlr_layer_surface_v1_set_anchor(proxy,
+                                     XDZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+
+  struct xdzwlr_layer_surface_v1_event_handlers *zwlr_layer_surface_v1 =
+      xdwl_list_push(global_listeners,
+                     &(struct xdzwlr_layer_surface_v1_event_handlers){
+                         .configure = handle_zwlr_layer_surface_v1_configure},
+                     sizeof(struct xdzwlr_layer_surface_v1_event_handlers));
+
+  ensure_result(
+      xdzwlr_layer_surface_v1_add_listener(proxy, zwlr_layer_surface_v1, o));
+
+  xdwl_surface_commit(proxy);
+  ensure_result(xdwl_roundtrip(proxy));
+}
+
+void setup_output(struct output *o) {
+  if (o->busy == 0) {
+    create_layer_surface(o);
+    o->busy = 1;
+  }
+}
+
 int main(int argc, char **argv) {
   xdwl_list *l;
   struct output *o;
   struct ipc_message *msg;
+
+  int cfd = 0;
+  sfd = ipc_server_start();
+
+  if (sfd < 0) {
+    xdwlw_error_set(XDWLWE_DSTART,
+                    "xdwlwd: failed to start (failed to open socket)");
+    xdwlw_exit();
+  }
 
   xdwl_list *outputs = init();
   if (!outputs) {
@@ -426,28 +517,29 @@ int main(int argc, char **argv) {
     xdwlw_log("info", "found %s output. res: %dx%d", o->name, o->width,
               o->height, o->logical_width, o->logical_height);
   }
-
-  int cfd = 0;
-  sfd = ipc_server_start();
-
-  if (sfd < 0) {
-    xdwlw_error_set(XDWLWE_DSTART,
-                    "xdwlwd: failed to start (failed to open socket)");
-    xdwl_list_for_each(l, outputs, o) { free(o->name); }
-
-    xdwl_list_destroy(outputs);
-    xdwlw_exit();
-  }
-
+  struct ipc_message reply;
   while (1) {
     msg = ipc_server_listen(sfd, &cfd);
     if (msg != NULL) {
       switch (msg->type) {
       case IPC_CLIENT_SET_COLOR:
         xdwl_list_for_each(l, outputs, o) {
-          if (draw_color_on_output(o, msg->set_color.color) != 0) {
-            struct ipc_message reply = {.type = IPC_SERVER_ERR};
-            reply.error.msg = xdwlw_error_get_msg();
+          if (STREQ(o->name, msg->set_color.output) ||
+              STREQ(msg->set_color.output, "all")) {
+
+            o->color = msg->set_color.color;
+            setup_output(o);
+
+            if (draw_color_on_output(o, msg->set_color.color) != 0) {
+              reply.type = IPC_SERVER_ERR;
+              snprintf(reply.error.msg, sizeof(reply.error.msg), "%s",
+                       xdwlw_error_get_msg());
+              ipc_server_send(cfd, &reply);
+            }
+          } else {
+            reply.type = IPC_SERVER_ERR;
+            snprintf(reply.error.msg, sizeof(reply.error.msg),
+                     "unknown output: %s", msg->set_color.output);
 
             ipc_server_send(cfd, &reply);
           }
@@ -457,10 +549,24 @@ int main(int argc, char **argv) {
 
       case IPC_CLIENT_SET_IMAGE:
         xdwl_list_for_each(l, outputs, o) {
-          if (draw_image_on_output(o, msg->set_image.path,
-                                   msg->set_image.mode) != 0) {
-            struct ipc_message reply = {.type = IPC_SERVER_ERR};
-            reply.error.msg = xdwlw_error_get_msg();
+          if (STREQ(o->name, msg->set_image.output) ||
+              STREQ(msg->set_image.output, "all")) {
+
+            o->image_path = msg->set_image.path;
+            o->image_mode = msg->set_image.mode;
+
+            setup_output(o);
+
+            if (draw_image_on_output(o) != 0) {
+              reply.type = IPC_SERVER_ERR;
+              snprintf(reply.error.msg, sizeof(reply.error.msg), "%s",
+                       xdwlw_error_get_msg());
+              ipc_server_send(cfd, &reply);
+            }
+          } else {
+            reply.type = IPC_SERVER_ERR;
+            snprintf(reply.error.msg, sizeof(reply.error.msg),
+                     "unknown output: %s", msg->set_image.output);
 
             ipc_server_send(cfd, &reply);
           }

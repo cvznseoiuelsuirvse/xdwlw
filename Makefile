@@ -24,8 +24,8 @@ MAIN_OBJS = $(MAIN_SRCS:%.c=$(DIST_DIR)/%.o)
 DAEMON_SRCS = $(PROTOCOL_SRCS) $(SRC_DIR)/xdwlw-handlers.c $(SRC_DIR)/xdwlw-ipc.c $(SRC_DIR)/xdwlw-outputs.c $(SRC_DIR)/xdwlwd.c $(SRC_DIR)/xdwlw-error.c $(wildcard $(LIBS_DIR)/*/src/*.c)
 DAEMON_OBJS = $(DAEMON_SRCS:%.c=$(DIST_DIR)/%.o)
 
-LOGS =
-# LOGS = -DLOGS
+DEBUG = 
+# DEBUG = -DDEBUG
 
 MAIN = $(BIN_DIR)/xdwlw
 DAEMON = $(BIN_DIR)/xdwlwd
@@ -54,11 +54,11 @@ $(DAEMON): $(DAEMON_OBJS)
 
 $(MAIN_DEBUG): $(MAIN_SRCS)
 	mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS $(DEBUG) -o $@ $^ $(LDLIBS)
 
 $(DAEMON_DEBUG): $(DAEMON_SRCS)
 	mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS $(DEBUG) -o $@ $^ $(LDLIBS)
 
 $(DIST_DIR)/%.o: %.c
 	mkdir -p $(dir $@)

@@ -2,6 +2,7 @@
 #define XDWLW_TYPES_H
 
 #include "xdwlw-common.h"
+#include <stdint.h>
 
 #define STREQ(s1, s2) strcmp(s1, s2) == 0
 #define COLOR(hex)                                                             \
@@ -44,13 +45,16 @@ struct output {
   int id;
   char *name;
 
+  uint32_t color;
+  const char *image_path;
+  char image_mode;
+
   uint32_t width;
   uint32_t height;
   uint32_t logical_width;
   uint32_t logical_height;
 
   uint32_t *buffer;
-  int fd;
   uint8_t busy;
 };
 
@@ -58,7 +62,7 @@ struct ipc_message {
   enum ipc_message_types type;
   union {
     struct {
-      const char *msg;
+      char msg[1024];
     } error;
 
     struct {

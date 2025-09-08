@@ -53,6 +53,7 @@ void xdwl_show_args(xdwl_arg *args, char *signature) {
   }
 
   printf(")\n");
+  fflush(stdout);
 }
 
 xdwl_arg *xdwl_read_args(xdwl_raw_message *message, const char *signature) {

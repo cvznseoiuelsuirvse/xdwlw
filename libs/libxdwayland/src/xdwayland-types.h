@@ -1,5 +1,5 @@
-#ifndef XDWAYLAND_STRUCTS_H
-#define XDWAYLAND_STRUCTS_H
+#ifndef XDWAYLAND_TYPES_H
+#define XDWAYLAND_TYPES_H
 
 #include "xdwayland-collections.h"
 #include "xdwayland-common.h"
@@ -21,7 +21,7 @@ typedef struct xdwl_raw_message {
 } xdwl_raw_message;
 
 struct xdwl_listener {
-  void *interface;
+  void *event_handlers;
   void *user_data;
 };
 
@@ -39,14 +39,14 @@ struct xdwl_method {
 
 struct xdwl_interface {
   char *name;
-  xdwl_list *requests;
-  xdwl_list *events;
+  const struct xdwl_method *requests;
+  const struct xdwl_method *events;
 };
 
 typedef struct xdwl_object {
   size_t id;
   char *name;
-  struct xdwl_interface *interface;
+  const struct xdwl_interface *interface;
 
 } xdwl_object;
 

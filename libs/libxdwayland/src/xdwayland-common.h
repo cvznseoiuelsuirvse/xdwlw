@@ -17,9 +17,9 @@
 #define PADDED4(n) ((n + 4) & ~3)
 
 #ifdef __GNUC__
-#define __must_check __attribute__((warn_unused_result))
+#define XDWL_MUST_CHECK __attribute__((warn_unused_result))
 #else
-#define __must_check
+#define XDWL_MUST_CHECK
 #endif
 
 #endif

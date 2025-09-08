@@ -29,99 +29,155 @@ def generate_comment(text: str) -> str:
     return "\n".join(ret)
 
 
-def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> str:
-    requests = ""
+def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> tuple[str, str] | None:
+    if cur.find("./request") is not None:
+        requests = ""
+        requests_array = f"static const struct xdwl_method xd{interface_name}_requests[] = {{\n"
 
-    for i, request in enumerate(cur.findall("./request")):
-        request_name = request.get("name")
-        request_description = request.find("./description")
+        for i, request in enumerate(cur.findall("./request")):
+            request_name = request.get("name")
+            request_description = request.find("./description")
 
-        if header and request_description is not None and request_description.text:
-            method = generate_comment(request_description.get("summary", "") + "\n" + request_description.text) + "\n"
-        else:
-            method = ""
+            request_struct = f'    {{"{request_name}", '
 
-        method += f"int xd{interface_name}_{request_name}(xdwl_proxy *proxy, "
+            if header and request_description is not None and request_description.text:
+                method = generate_comment(request_description.get("summary", "") + "\n" + request_description.text) + "\n"
+            else:
+                method = ""
 
-        args = []
+            method += f"int xd{interface_name}_{request_name}(xdwl_proxy *proxy, "
 
-        if interface_name == "wl_registry" and request_name == "bind":
-            method += "uint32_t _name, const char *_interface, uint32_t _version, uint32_t _new_id, "
-            args = ["_name", "_interface", "_version", "_new_id"]
+            args = []
+            signature = ""
 
-        else:
-            for arg in request.findall("./arg"):
-                arg_name = "_" + arg.get("name", "")
-                arg_type = arg.get("type")
-                args.append(arg_name)
-
-                match arg_type:
-                    case "int" | "enum":
-                        method += f"int32_t {arg_name}"
-
-                    case "uint" | "new_id" | "object":
-                        method += f"uint32_t {arg_name}"
-
-                    case "fd":
-                        method += f"int {arg_name}"
-
-                    case "fixed":
-                        method += f"float {arg_name}"
-
-                    case "string":
-                        method += f"const char *{arg_name}"
-
-                method += ", "
-
-        method = method.rstrip(", ")
-        method += ")"
-
-        if not header:
-            method += " {\n"
-            if args:
-                method += f'    return xdwl_send_request(proxy, "{interface_name}", {i}, {len(args)}, {", ".join(args)});\n'
+            if interface_name == "wl_registry" and request_name == "bind":
+                method += "uint32_t _name, const char *_interface, uint32_t _version, uint32_t _new_id, "
+                args = ["_name", "_interface", "_version", "_new_id"]
+                signature = "usuu"
 
             else:
-                method += f'    return xdwl_send_request(proxy, "{interface_name}", {i}, 0);\n'
-            method += "}"
+                for arg in request.findall("./arg"):
+                    arg_name = "_" + arg.get("name", "")
+                    arg_type = arg.get("type")
+                    args.append(arg_name)
 
-        method += ";"
+                    match arg_type:
+                        case "int" | "enum":
+                            method += f"int32_t {arg_name}"
+                            signature += "i"
 
-        requests += method + "\n\n"
+                        case "uint" | "new_id" | "object":
+                            method += f"uint32_t {arg_name}"
+                            signature += "u"
 
-    return requests
+                        case "fd":
+                            method += f"int {arg_name}"
+                            signature += "h"
+
+                        case "fixed":
+                            method += f"float {arg_name}"
+                            signature += "f"
+
+                        case "string":
+                            method += f"const char *{arg_name}"
+                            signature += "s"
+
+                    method += ", "
+
+            method = method.rstrip(", ")
+            method += ")"
+
+            if not header:
+                method += " {\n"
+                if args:
+                    method += f'    return xdwl_send_request(proxy, "{interface_name}", {i}, {len(args)}, {", ".join(args)});\n'
+                    request_struct += f'{len(args)}, "{signature}"}},\n'
+
+                else:
+                    method += f'    return xdwl_send_request(proxy, "{interface_name}", {i}, 0);\n'
+                    request_struct += f"0, NULL}},\n"
+
+                method += "}"
+
+            method += ";"
+
+            requests_array += request_struct
+            requests += method + "\n"
+
+        requests_array += "};"
+        return requests, requests_array
 
 
 def generate_add_listener(interface_name: str, *, header: bool) -> str:
     if header:
-        listener = f"__must_check int xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name} *interface, void *user_data);"
+        listener = f"XDWL_MUST_CHECK int xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name}_event_handlers *event_handlers, void *user_data);"
 
     else:
-        listener = f"""int xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name} *interface, void *user_data) {{
-      return xdwl_add_listener(proxy, \"{interface_name}\", interface, user_data);
-    }};"""
+        listener = f"""int xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name}_event_handlers *event_handlers, void *user_data) {{
+      return xdwl_add_listener(proxy, \"{interface_name}\", event_handlers, user_data);
+}};"""
 
     return listener
 
 
-def generate_events(interface_name: str, cur: ET.Element, *, header: bool) -> str | None:
+def generate_events(interface_name: str, cur: ET.Element, *, header: bool) -> tuple[str, str] | None:
     if cur.find("./event") is not None:
         if not header:
-            return f"struct xd{interface_name};"
-
-        struct = f"""struct xd{interface_name} {{
+            event_handlers = f"struct xd{interface_name}_event_handlers;"
+        else:
+            event_handlers = f"""struct xd{interface_name}_event_handlers {{
 """
+        event_array = f"static const struct xdwl_method xd{interface_name}_events[] = {{\n"
 
         for event in cur.findall("./event"):
+            event_name = event.get("name")
             event_description = event.find("./description")
-            if event_description is not None and event_description.text:
-                struct += "\n" + generate_comment(event_description.get("summary", "") + "\n" + event_description.text) + "\n"
+            event_struct = f'    {{"{event_name}", '
 
-            struct += f"  xdwl_event_handler(*{event.get('name')});\n\n"
+            if header:
+                if event_description is not None and event_description.text:
+                    event_handlers += "\n" + generate_comment(event_description.get("summary", "") + "\n" + event_description.text) + "\n"
 
-        struct += "};"
+                event_handlers += f"  xdwl_event_handler(*{event.get('name')});\n\n"
 
-        return struct
+            else:
+                args = []
+                signature = ""
+
+                for arg in event.findall("./arg"):
+                    arg_name = "_" + arg.get("name", "")
+                    arg_type = arg.get("type")
+                    args.append(arg_name)
+
+                    match arg_type:
+                        case "int" | "enum":
+                            signature += "i"
+
+                        case "uint" | "new_id" | "object":
+                            signature += "u"
+
+                        case "fd":
+                            signature += "h"
+
+                        case "fixed":
+                            signature += "f"
+
+                        case "string":
+                            signature += "s"
+
+                if args:
+                    event_struct += f'{len(args)}, "{signature}"}},\n'
+
+                else:
+                    event_struct += f"0, NULL}},\n"
+
+                event_array += event_struct
+
+        if header:
+            event_handlers += "};"
+
+        event_array += "};"
+        return event_handlers, event_array
 
 
 def generate_enum(interface_name: str, cur: ET.Element) -> str | None:
@@ -152,6 +208,22 @@ def generate_enum(interface_name: str, cur: ET.Element) -> str | None:
     return enum_t
 
 
+def generate_interface_struct(cur: ET.Element, interface_name: str) -> str:
+    struct = f"""const struct xdwl_interface xd{interface_name}_interface XDWL_ADD_TO_SECTION = {{
+    .name = \"{interface_name}\",
+"""
+
+    if cur.find("./request") is not None:
+        struct += f"    .requests = xd{interface_name}_requests,\n"
+
+    if cur.find("./event") is not None:
+        struct += f"    .events = xd{interface_name}_events,\n"
+
+    struct += "};"
+
+    return struct
+
+
 def generate_interface(cur: ET.Element, h: TextIOWrapper, c: TextIOWrapper) -> None:
     interface_name = cur.get("name")
     assert interface_name
@@ -165,22 +237,30 @@ def generate_interface(cur: ET.Element, h: TextIOWrapper, c: TextIOWrapper) -> N
     if enum:
         h.write(enum + "\n")
 
+    requests_h = generate_requests(interface_name, cur, header=True)
+    requests_c = generate_requests(interface_name, cur, header=False)
+
     events_h = generate_events(interface_name, cur, header=True)
     events_c = generate_events(interface_name, cur, header=False)
 
     if events_h and events_c:
-        h.write("\n" + events_h + "\n")
+        h.write("\n" + events_h[0] + "\n")
         h.write(generate_add_listener(interface_name, header=True) + "\n\n")
 
-        c.write("\n" + events_c + "\n")
+        c.write("\n" + events_c[0])
         c.write(generate_add_listener(interface_name, header=False) + "\n\n")
 
-    requests_h = generate_requests(interface_name, cur, header=True)
-    requests_c = generate_requests(interface_name, cur, header=False)
-
     if requests_h and requests_c:
-        h.write("\n" + requests_h + "\n")
-        c.write("\n" + requests_c + "\n")
+        h.write("\n" + requests_h[0] + "\n")
+        c.write("\n" + requests_c[0] + "\n")
+
+    if requests_c:
+        c.write(requests_c[1] + "\n")
+
+    if events_c:
+        c.write(events_c[1] + "\n")
+
+    c.write(generate_interface_struct(cur, interface_name))
 
 
 def generate(input: str, output_path_base: str) -> None:
@@ -203,6 +283,12 @@ def generate(input: str, output_path_base: str) -> None:
 
     c.write(
         f"""#include "xdwayland-private.h"
+
+#ifdef __GNUC__
+#define XDWL_ADD_TO_SECTION __attribute__((used, section("xdwl_interfaces"), aligned(8)))
+#else
+#error "Only gcc supported"
+#endif
 
 """
     )
