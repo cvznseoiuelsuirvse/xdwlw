@@ -6,8 +6,8 @@ BIN_DIR = bin
 LIBS_DIR = libs
 PROTOCOLS_DIR = protocols
 
-CPPFLAGS = -I/usr/include/libxml2 -I$(LIBS_DIR)/libxdwayland/src
-LDLIBS = -lxml2 -lm
+CPPFLAGS = -I$(LIBS_DIR) -I$(LIBS_DIR)/libxdwayland/src
+LDLIBS = -lm
 
 PY_SRCS = $(wildcard $(LIBS_DIR)/*/src/*.py)
 PY_INSTALL_DIR = $(HOME)/.local/bin
@@ -77,6 +77,14 @@ xdg-output-unstable-v1-protocol.c: xdwayland-scanner
 viewporter-protocol.c: xdwayland-scanner
 	xdwayland-scanner /usr/share/wayland-protocols/stable/viewporter/viewporter.xml viewporter-protocol
 
+install:
+	cp $(MAIN) /usr/bin/
+	cp $(DAEMON) /usr/bin/
+
+uninstall:
+	rm -f /usr/bin/$(basename $(MAIN))
+	rm -f /usr/bin/$(basename $(DAEMON))
+	rm -f $(PY_INSTALL_DIR)/xdwayland-scanner
 
 clean:
 	rm -rf $(DIST_DIR) $(BIN_DIR)

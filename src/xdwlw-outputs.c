@@ -1,18 +1,13 @@
-#include "../xdg-output-unstable-v1-protocol.h"
 #include "xdwayland-client.h"
 #include "xdwayland-core.h"
 
-#include "xdwlw-common.h"
+#include "../xdg-output-unstable-v1-protocol.h"
 #include "xdwlw-error.h"
 #include "xdwlw-types.h"
 
-#define ensure_res1(n)                                                         \
-  if ((n) == NULL)                                                             \
-  return -1
-
-#define ensure_res2(n)                                                         \
+#define ENSURE_RESULT(n)                                                       \
   if ((n) == -1)                                                               \
-  return -1
+  xdwlw_exit()
 
 extern void xdwlw_exit();
 void handle_wl_output_mode(void *outputs, xdwl_arg *args);
@@ -36,18 +31,19 @@ int get_outputs(xdwl_proxy *proxy, xdwl_list *globals, xdwl_list *outputs) {
     if (STREQ(g->interface, "wl_output")) {
       new_id = xdwl_object_register(proxy, 0, g->interface);
       if (new_id == -1) {
-        xdwlw_error_set(XDWLWE_NOINTF, "failed to register %s", g->interface);
+        xdwlw_error_set(XDWLWE_NOIFACE, "failed to register %s", g->interface);
         xdwlw_exit();
       }
-      ensure_res2(xdwl_output_add_listener(proxy, &wl_output, outputs));
+      ENSURE_RESULT(xdwl_output_add_listener(proxy, &wl_output, outputs));
 
       struct output o = {.id = new_id, .buffer = NULL, .busy = 0};
-      ensure_res1(xdwl_list_push(outputs, &o, sizeof(struct output)));
+      if (xdwl_list_push(outputs, &o, sizeof(struct output)) == NULL)
+        return -1;
 
     } else if (STREQ(g->interface, "zxdg_output_manager_v1")) {
       new_id = xdwl_object_register(proxy, 0, g->interface);
       if (new_id == -1) {
-        xdwlw_error_set(XDWLWE_NOINTF, "failed to register %s", g->interface);
+        xdwlw_error_set(XDWLWE_NOIFACE, "failed to register %s", g->interface);
         xdwlw_exit();
       }
       n &= ~ZXDG_OUTPUT_MANAGER_V1;
@@ -55,7 +51,7 @@ int get_outputs(xdwl_proxy *proxy, xdwl_list *globals, xdwl_list *outputs) {
 
     if (new_id > 0) {
       xdwl_registry_bind(proxy, g->name, g->interface, g->version, new_id);
-      ensure_res2(xdwl_roundtrip(proxy));
+      ENSURE_RESULT(xdwl_roundtrip(proxy));
     }
 
     free(g->interface);
@@ -69,11 +65,11 @@ int get_outputs(xdwl_proxy *proxy, xdwl_list *globals, xdwl_list *outputs) {
     size_t zxdg_output_object_id =
         xdwl_object_register(proxy, 0, "zxdg_output_v1");
 
-    ensure_res2(xdzxdg_output_v1_add_listener(proxy, &zxdg_output_v1, o));
+    ENSURE_RESULT(xdzxdg_output_v1_add_listener(proxy, &zxdg_output_v1, o));
     xdzxdg_output_manager_v1_get_xdg_output(proxy, zxdg_output_object_id,
                                             o->id);
 
-    ensure_res2(xdwl_roundtrip(proxy));
+    ENSURE_RESULT(xdwl_roundtrip(proxy));
   }
 
   return n;

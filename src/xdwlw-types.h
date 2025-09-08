@@ -45,7 +45,7 @@ struct output {
   int id;
   char *name;
 
-  uint32_t color;
+  int color;
   const char *image_path;
   char image_mode;
 

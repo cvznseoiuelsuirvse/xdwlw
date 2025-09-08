@@ -1,3 +1,4 @@
+#include <linux/limits.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -7,7 +8,6 @@
 #include "xdwlw-types.h"
 
 #include <getopt.h>
-#include <time.h>
 
 void print_help() {
   printf("usage: xdwlw [-h] [-0] [-i IMAGE] [-m {F, C}] [-c COLOR] "
@@ -40,13 +40,6 @@ struct ipc_message *send_and_recv(int fd, struct ipc_message *msg) {
   };
 
   return resp;
-}
-
-void wait(size_t ms) {
-  struct timespec ts;
-  ts.tv_sec = ms / 1000;
-  ts.tv_nsec = (ms % 1000) * 1E6;
-  nanosleep(&ts, NULL);
 }
 
 int main(int argc, char **argv) {
@@ -90,9 +83,9 @@ int main(int argc, char **argv) {
       break;
 
     case 'i':
-      if (strlen(optarg) > 64) {
+      if (strlen(optarg) > PATH_MAX) {
         xdwlw_error_set(XDWLWE_LONGSTR,
-                        "xdwlw: image argument is >64 characters long");
+                        "xdwlw: image argument is >PATH_MAX characters long");
         xdwlw_error_print();
         return 1;
       }

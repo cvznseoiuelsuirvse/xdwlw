@@ -11,12 +11,13 @@ enum xdwlw_errors {
   XDWLWE_DRECV,
   XDWLWE_DSEND,
   XDWLWE_LONGSTR,
-  XDWLWE_NOINTF,
+  XDWLWE_NOIFACE,
   XDWLWE_NOOUPUTBUF,
   XDWLWE_NOIMG,
   XDWLWE_IMGOPEN,
   XDWLWE_IMGRESIZE,
   XDWLWE_IMGINVMODE,
+  XDWLWE_NOFILE,
 };
 
 void xdwlw_error_set(enum xdwlw_errors errcode, const char *errmsg_fmt, ...);

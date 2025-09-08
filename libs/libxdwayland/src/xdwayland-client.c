@@ -317,11 +317,6 @@ xdwl_proxy *xdwl_proxy_create() {
   if (__xdwl_listeners == NULL)
     return NULL;
 
-  for (const struct xdwl_interface *iface = __start_xdwl_interfaces;
-       iface < __stop_xdwl_interfaces; iface++) {
-    printf("%s\n", iface->name);
-  }
-
   return proxy;
 }
 

@@ -1,6 +1,16 @@
 #ifndef XDWLW_IPC_H
 #define XDWLW_IPC_H
 
+#include "xdwlw-common.h"
+
+uint32_t buf_read_u32(void *buffer, size_t *offset);
+uint8_t buf_read_u8(void *buffer, size_t *offset);
+char *buf_read_string(void *buffer, size_t *offset);
+
+void buf_write_u32(void *buffer, size_t *offset, uint32_t n);
+void buf_write_u8(void *buffer, size_t *offset, uint8_t n);
+void buf_write_string(void *buffer, size_t *offset, const char *string);
+
 int ipc_client_connect();
 struct ipc_message *ipc_client_recv(int sfd);
 int ipc_client_send(int sfd, struct ipc_message *msg);

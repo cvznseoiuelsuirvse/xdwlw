@@ -27,21 +27,21 @@ static void ipc_get_sock_path(char *path) {
   snprintf(path, 108, "%s/xdwlw-%d.sock", dir, getuid());
 }
 
-static uint32_t buf_read_u32(void *buffer, size_t *offset) {
+uint32_t buf_read_u32(void *buffer, size_t *offset) {
   uint32_t value = *(uint32_t *)(buffer + *offset);
   *offset += sizeof(value);
 
   return value;
 }
 
-static uint8_t buf_read_u8(void *buffer, size_t *offset) {
+uint8_t buf_read_u8(void *buffer, size_t *offset) {
   uint8_t value = *(uint8_t *)(buffer + *offset);
   *offset += sizeof(value);
 
   return value;
 }
 
-static char *buf_read_string(void *buffer, size_t *offset) {
+char *buf_read_string(void *buffer, size_t *offset) {
   uint16_t string_length = *(uint16_t *)(buffer + *offset);
   *offset += sizeof(string_length);
 
@@ -51,22 +51,23 @@ static char *buf_read_string(void *buffer, size_t *offset) {
   return string;
 }
 
-static void buf_write_u32(void *buffer, size_t *offset, uint32_t n) {
+void buf_write_u32(void *buffer, size_t *offset, uint32_t n) {
   *(uint32_t *)(buffer + *offset) = n;
   *offset += sizeof(n);
 }
 
-static void buf_write_u8(void *buffer, size_t *offset, uint8_t n) {
+void buf_write_u8(void *buffer, size_t *offset, uint8_t n) {
   *(uint8_t *)(buffer + *offset) = n;
   *offset += sizeof(n);
 }
 
-static void buf_write_string(void *buffer, size_t *offset, const char *string) {
+void buf_write_string(void *buffer, size_t *offset, const char *string) {
   uint16_t string_length = strlen(string) + 1;
   *(uint16_t *)(buffer + *offset) = string_length;
   *offset += sizeof(uint16_t);
 
   memcpy((char *)(buffer + *offset), string, string_length);
+
   *offset += string_length;
 }
 
