@@ -111,6 +111,7 @@ void handle_wl_output_name(void *_, xdwl_arg *args) {
     new_output->image_path = old_output->image_path;
     new_output->image_mode = old_output->image_mode;
     new_output->buffer = old_output->buffer;
+    new_output->buffer_id = old_output->buffer_id;
     new_output->surface_id = old_output->surface_id;
     xdwl_list_remove(&outputs, old_output_idx);
 
