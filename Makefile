@@ -35,7 +35,7 @@ DAEMON_DEBUG = $(BIN_DIR)/debugd
 all: main
 
 main: $(MAIN) $(DAEMON)
-main: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter
+main: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -O3
 
 debug: $(MAIN_DEBUG) $(DAEMON_DEBUG)
 debug: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -g

@@ -2,7 +2,8 @@
 #include "xdwayland-collections.h"
 #include "xdwayland-core.h"
 #include "xdwayland-types.h"
-#include <string.h>
+#include <stdint.h>
+#include <time.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -31,26 +32,27 @@ int sfd;
 xdwl_proxy *proxy;
 xdwl_list *outputs = NULL;
 
-xdwl_list *xdwlw_init();
-void bind_globals();
-void xdwlw_exit(int sig);
+void xdwlw_init();
+void setup_globals();
+void xdwlw_exit(int);
 
-void read_from_cache(struct output *o);
-void write_to_cache(struct output *o);
+void read_from_cache(struct output *);
+void write_to_cache(struct output *);
 
-void create_layer_surface(struct output *o);
-void apply(struct output *o);
-void create_output_buffer(struct output *o);
-void destroy_output_buffer(struct output *o);
+void create_layer_surface(struct output *);
+void apply(struct output *);
+void *create_wl_buffer(uint32_t, uint32_t, uint32_t *);
+void destroy_output_buffer(struct output *);
 
-void handle_wl_display_error(void *_, xdwl_arg *args);
-void handle_wl_display_delete_id(void *_, xdwl_arg *args);
-void handle_wl_registry_global(void *_, xdwl_arg *args);
-void handle_wl_output_mode(void *_, xdwl_arg *args);
-void handle_wl_output_name(void *_, xdwl_arg *args);
-void handle_xdg_output_logical_size(void *output, xdwl_arg *args);
-void handle_zwlr_layer_surface_v1_closed(void *output, xdwl_arg *args);
-void handle_zwlr_layer_surface_v1_configure(void *output, xdwl_arg *args);
+void handle_wl_display_error(void *, xdwl_arg *);
+void handle_wl_display_delete_id(void *, xdwl_arg *);
+void handle_wl_registry_global(void *, xdwl_arg *);
+void handle_wl_output_mode(void *, xdwl_arg *);
+void handle_wl_output_name(void *, xdwl_arg *);
+void handle_wl_pointer_enter(void *, xdwl_arg *);
+void handle_xdg_output_logical_size(void *, xdwl_arg *);
+void handle_zwlr_layer_surface_v1_closed(void *, xdwl_arg *);
+void handle_zwlr_layer_surface_v1_configure(void *, xdwl_arg *);
 
 uint32_t *resize_image_nni(uint32_t *i_buffer, size_t i_width, size_t i_height,
                            size_t o_width, size_t o_height);
@@ -117,6 +119,16 @@ void handle_wl_output_name(void *_, xdwl_arg *args) {
   }
 }
 
+void handle_wl_pointer_enter(void *cursor_surface, xdwl_arg *args) {
+  uint32_t serial = args[1].u;
+  float surface_x = args[3].f;
+  float surface_y = args[4].f;
+
+  xdwl_pointer_set_cursor(proxy, 0, serial, *(uint32_t *)cursor_surface,
+                          surface_x, surface_y);
+  ENSURE_RESULT(xdwl_roundtrip(proxy));
+}
+
 void handle_xdg_output_logical_size(void *output, xdwl_arg *args) {
   ((struct output *)output)->logical_width = args[1].i;
   ((struct output *)output)->logical_height = args[2].i;
@@ -134,14 +146,14 @@ void get_output_logical_size(struct output *o) {
   ENSURE_RESULT(xdwl_roundtrip(proxy));
 }
 
-void create_output_buffer(struct output *o) {
+void *create_wl_buffer(uint32_t width, uint32_t height,
+                       uint32_t *wl_buffer_id) {
   size_t wl_shm_pool_id;
-  size_t wl_buffer_id;
 
   char name[255];
   snprintf(name, 255, "xdwlw-shm-%x", rand());
 
-  int32_t buffer_size = o->width * o->height * BPP;
+  int32_t buffer_size = width * height * BPP;
 
   int fd = shm_open(name, O_RDWR | O_EXCL | O_CREAT, 0600);
   shm_unlink(name);
@@ -149,14 +161,14 @@ void create_output_buffer(struct output *o) {
   if (fd == -1) {
     perror("shm_open");
     xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
-                    o->name);
+                    name);
     xdwlw_exit(0);
   }
 
   if (ftruncate(fd, buffer_size) == -1) {
     perror("ftruncate");
     xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
-                    o->name);
+                    name);
     xdwlw_exit(0);
   }
 
@@ -170,9 +182,9 @@ void create_output_buffer(struct output *o) {
     wl_shm_pool_id = wl_shm_pool_object->id;
   }
 
-  wl_buffer_id = xdwl_object_register(proxy, 0, "wl_buffer");
-  xdwl_shm_pool_create_buffer(proxy, 0, wl_buffer_id, 0, o->width, o->height,
-                              o->width * BPP, XDWL_SHM_FORMAT_ARGB8888);
+  *wl_buffer_id = xdwl_object_register(proxy, 0, "wl_buffer");
+  xdwl_shm_pool_create_buffer(proxy, 0, *wl_buffer_id, 0, width, height,
+                              width * BPP, XDWL_SHM_FORMAT_ARGB8888);
 
   uint32_t *buffer =
       mmap(NULL, buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -180,14 +192,14 @@ void create_output_buffer(struct output *o) {
   if (buffer == MAP_FAILED) {
     perror("mmap");
     xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
-                    o->name);
+                    name);
     xdwlw_exit(0);
   }
 
   xdwlw_log("info", "initialized buffer %s with a size of %d", name,
             buffer_size);
 
-  o->buffer = buffer;
+  return buffer;
 }
 
 void destroy_output_buffer(struct output *o) {
@@ -224,7 +236,7 @@ void handle_zwlr_layer_surface_v1_configure(void *output, xdwl_arg *args) {
   }
 
   if (o->buffer == NULL) {
-    create_output_buffer(o);
+    o->buffer = create_wl_buffer(o->width, o->height, &o->buffer_id);
   }
 }
 
@@ -496,19 +508,13 @@ void apply_saved_wallpapers(struct output *o) {
 }
 
 void apply(struct output *o) {
-  xdwl_object *wl_buffer_object = xdwl_object_get_by_name(proxy, "wl_buffer");
-  if (!wl_buffer_object) {
-    xdwlw_exit(0);
-  }
-
-  uint32_t wl_buffer_id = wl_buffer_object->id;
-  xdwl_surface_attach(proxy, 0, wl_buffer_id, 0, 0);
+  xdwl_surface_attach(proxy, 0, o->buffer_id, 0, 0);
   xdwl_surface_damage_buffer(proxy, 0, 0, 0, o->width * BPP, o->height);
   xdwl_surface_commit(proxy, 0);
   ENSURE_RESULT(xdwl_roundtrip(proxy));
 }
 
-void bind_globals() {
+void setup_globals() {
   size_t wl_registry_id = xdwl_object_register(proxy, 0, "wl_registry");
 
   struct xdwl_registry_event_handlers wl_registry_event_handlers = {
@@ -521,12 +527,14 @@ void bind_globals() {
   ENSURE_RESULT(xdwl_roundtrip(proxy));
 };
 
-xdwl_list *xdwlw_init() {
+void xdwlw_init() {
   proxy = xdwl_proxy_create();
   if (!proxy)
     xdwlw_exit(0);
 
-  ENSURE_RESULT(xdwl_object_register(proxy, 0, "wl_display"));
+  if (xdwl_object_register(proxy, 0, "wl_display") == 0)
+    xdwlw_exit(0);
+
   struct xdwl_display_event_handlers wl_display = {
       .delete_id = handle_wl_display_delete_id,
       .error = handle_wl_display_error};
@@ -537,8 +545,7 @@ xdwl_list *xdwlw_init() {
   if (outputs == NULL)
     xdwlw_exit(0);
 
-  bind_globals();
-  return outputs;
+  setup_globals();
 }
 
 void xdwlw_exit(int _) {

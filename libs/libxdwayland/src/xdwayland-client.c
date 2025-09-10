@@ -134,8 +134,8 @@ xdwl_object *xdwl_object_get_by_name(xdwl_proxy *proxy,
   return object;
 }
 
-int xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
-                         const char *object_name) {
+uint32_t xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
+                              const char *object_name) {
   uint32_t o = object_id;
   int bit;
 
@@ -144,7 +144,7 @@ int xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
     };
 
     if (xdwl_bitmap_set(client_id_pool, o) == -1)
-      return -1;
+      return 0;
 
   } else if (object_id >= SERVER_IDS_START &&
              object_id <= SERVER_IDS_END) { // server id
@@ -156,18 +156,18 @@ int xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
       if (xdwl_bitmap_chsize(
               server_id_pool,
               (uint32_t)((object_id - SERVER_IDS_START) / 8) * 8 + 8) == -1)
-        return -1;
+        return 0;
 
     } else if (bit == 1) {
       xdwl_error_set(XDWLERR_IDTAKEN,
                      "xdwl_object_register: failed to register server object "
                      "with id %ld. %ld is already taken",
                      object_id);
-      return -1;
+      return 0;
     }
 
     if (xdwl_bitmap_set(server_id_pool, object_id - SERVER_IDS_START) == -1)
-      return -1;
+      return 0;
 
   } else { // client id
     bit = xdwl_bitmap_get(server_id_pool, object_id);
@@ -178,18 +178,18 @@ int xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
       if (xdwl_bitmap_chsize(
               client_id_pool,
               (uint32_t)((object_id - CLIENT_IDS_START) / 8) * 8 + 8) == -1)
-        return -1;
+        return 0;
 
     } else if (bit == 1) {
       xdwl_error_set(XDWLERR_IDTAKEN,
                      "xdwl_object_register: failed to register server object "
                      "with id %ld. %ld is already taken",
                      object_id);
-      return -1;
+      return 0;
     }
 
     if (xdwl_bitmap_set(server_id_pool, object_id - SERVER_IDS_START) == -1)
-      return -1;
+      return 0;
   }
 
   const struct xdwl_interface *interface = xdwl_lookup_interfaces(object_name);
@@ -198,7 +198,7 @@ int xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
                    "xdwl_object_register: failed to register object %s.#%d. %s "
                    "interface not found",
                    object_name, o, object_name);
-    return -1;
+    return 0;
   }
 
   sequence_number++;
@@ -208,7 +208,7 @@ int xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
                         .seq = sequence_number};
 
   if (xdwl_map_set(proxy->obj_reg, o, &object, sizeof(xdwl_object)) == NULL)
-    return -1;
+    return 0;
 
   return o;
 }

@@ -54,6 +54,7 @@ struct output {
   uint32_t logical_height;
 
   uint32_t *buffer;
+  uint32_t buffer_id;
   uint32_t surface_id;
 };
 

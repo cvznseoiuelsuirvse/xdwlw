@@ -4,6 +4,7 @@
 #include "xdwayland-common.h"
 #include "xdwayland-private.h"
 #include "xdwayland-types.h"
+#include <stdint.h>
 
 xdwl_proxy *xdwl_proxy_create();
 void xdwl_proxy_destroy(xdwl_proxy *proxy);
@@ -26,8 +27,9 @@ struct xdwl_object *xdwl_object_get_by_id(xdwl_proxy *proxy,
                                           uint32_t object_id);
 struct xdwl_object *xdwl_object_get_by_name(xdwl_proxy *proxy,
                                             const char *object_name);
-XDWL_MUST_CHECK int xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
-                                         const char *object_name);
+XDWL_MUST_CHECK uint32_t xdwl_object_register(xdwl_proxy *proxy,
+                                              uint32_t object_id,
+                                              const char *object_name);
 XDWL_MUST_CHECK int xdwl_object_unregister(xdwl_proxy *proxy,
                                            uint32_t object_id);
 XDWL_MUST_CHECK int xdwl_object_unregister_last(xdwl_proxy *proxy,
