@@ -2,7 +2,6 @@
 #define XDWLW_TYPES_H
 
 #include "xdwlw-common.h"
-#include <stdint.h>
 
 #define STREQ(s1, s2) strcmp(s1, s2) == 0
 #define COLOR(hex)                                                             \
@@ -42,7 +41,7 @@ struct wl_global {
 };
 
 struct output {
-  int id;
+  uint32_t id;
   char *name;
 
   int color;
@@ -55,7 +54,7 @@ struct output {
   uint32_t logical_height;
 
   uint32_t *buffer;
-  uint8_t busy;
+  uint32_t surface_id;
 };
 
 struct ipc_message {

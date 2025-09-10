@@ -1,4 +1,3 @@
-#include <linux/limits.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -170,9 +169,7 @@ int main(int argc, char **argv) {
     break;
 
   default:
-    xdwlw_log("warn",
-              "received message back from daemon with unknown type"
-              "retrying",
+    xdwlw_log("warn", "received message back from daemon with unknown type: %d",
               resp->type);
     break;
   }

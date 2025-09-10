@@ -1,3 +1,4 @@
+#include "xdwayland-client.h"
 #include "xdwayland-common.h"
 #include "xdwayland-types.h"
 
@@ -56,13 +57,13 @@ void xdwl_show_args(xdwl_arg *args, char *signature) {
   fflush(stdout);
 }
 
-xdwl_arg *xdwl_read_args(xdwl_raw_message *message, const char *signature) {
-  size_t arg_count = strlen(signature);
-  xdwl_arg *args = malloc(arg_count * sizeof(xdwl_arg));
-
+int xdwl_read_args(struct xdwl_raw_message *message, xdwl_arg *args,
+                   const char *signature) {
+  size_t arg_count = strlen(signature) + 1;
   size_t offset = 0;
-  for (size_t i = 0; i < arg_count; i++) {
-    char arg_signature = signature[i];
+
+  for (size_t i = 1; i <= arg_count; i++) {
+    char arg_signature = signature[i - 1];
     switch (arg_signature) {
     case 'i':
       args[i].i = *(uint32_t *)(message->body + offset);
@@ -92,7 +93,7 @@ xdwl_arg *xdwl_read_args(xdwl_raw_message *message, const char *signature) {
     }
   }
 
-  return args;
+  return 0;
 };
 
 void xdwl_write_args(char *buffer, size_t *offset, xdwl_arg *args,

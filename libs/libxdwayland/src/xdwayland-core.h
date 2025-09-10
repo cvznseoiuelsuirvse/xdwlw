@@ -109,7 +109,7 @@ XDWL_MUST_CHECK int xdwl_registry_add_listener(xdwl_proxy *proxy, struct xdwl_re
 * 
 * Binds a new, client-created object to the server using the
 * specified name as the identifier. */
-int xdwl_registry_bind(xdwl_proxy *proxy, uint32_t _name, const char *_interface, uint32_t _version, uint32_t _new_id);
+int xdwl_registry_bind(xdwl_proxy *proxy, uint32_t wl_registry_id, uint32_t _name, const char *_interface, uint32_t _version, uint32_t _new_id);
 
 
 struct xdwl_callback_event_handlers {
@@ -126,11 +126,11 @@ XDWL_MUST_CHECK int xdwl_callback_add_listener(xdwl_proxy *proxy, struct xdwl_ca
 /* create new surface
 * 
 * Ask the compositor to create a new surface. */
-int xdwl_compositor_create_surface(xdwl_proxy *proxy, uint32_t _id);
+int xdwl_compositor_create_surface(xdwl_proxy *proxy, uint32_t wl_compositor_id, uint32_t _id);
 /* create new region
 * 
 * Ask the compositor to create a new region. */
-int xdwl_compositor_create_region(xdwl_proxy *proxy, uint32_t _id);
+int xdwl_compositor_create_region(xdwl_proxy *proxy, uint32_t wl_compositor_id, uint32_t _id);
 
 
 /* create a buffer from the pool
@@ -146,7 +146,7 @@ int xdwl_compositor_create_region(xdwl_proxy *proxy, uint32_t _id);
 * A buffer will keep a reference to the pool it was created from
 * so it is valid to destroy the pool immediately after creating
 * a buffer from it. */
-int xdwl_shm_pool_create_buffer(xdwl_proxy *proxy, uint32_t _id, int32_t _offset, int32_t _width, int32_t _height, int32_t _stride, uint32_t _format);
+int xdwl_shm_pool_create_buffer(xdwl_proxy *proxy, uint32_t wl_shm_pool_id, uint32_t _id, int32_t _offset, int32_t _width, int32_t _height, int32_t _stride, uint32_t _format);
 /* destroy the pool
 * 
 * Destroy the shared memory pool.
@@ -154,7 +154,7 @@ int xdwl_shm_pool_create_buffer(xdwl_proxy *proxy, uint32_t _id, int32_t _offset
 * The mmapped memory will be released when all
 * buffers that have been created from this pool
 * are gone. */
-int xdwl_shm_pool_destroy(xdwl_proxy *proxy);
+int xdwl_shm_pool_destroy(xdwl_proxy *proxy, uint32_t wl_shm_pool_id);
 /* change the size of the pool mapping
 * 
 * This request will cause the server to remap the backing memory
@@ -167,7 +167,7 @@ int xdwl_shm_pool_destroy(xdwl_proxy *proxy);
 * file descriptor passed at creation time. It is the client's
 * responsibility to ensure that the file is at least as big as
 * the new pool size. */
-int xdwl_shm_pool_resize(xdwl_proxy *proxy, int32_t _size);
+int xdwl_shm_pool_resize(xdwl_proxy *proxy, uint32_t wl_shm_pool_id, int32_t _size);
 
 enum xdwl_shm_error {
 
@@ -551,14 +551,14 @@ XDWL_MUST_CHECK int xdwl_shm_add_listener(xdwl_proxy *proxy, struct xdwl_shm_eve
 * The pool can be used to create shared memory based buffer
 * objects.  The server will mmap size bytes of the passed file
 * descriptor, to use as backing memory for the pool. */
-int xdwl_shm_create_pool(xdwl_proxy *proxy, uint32_t _id, int _fd, int32_t _size);
+int xdwl_shm_create_pool(xdwl_proxy *proxy, uint32_t wl_shm_id, uint32_t _id, int _fd, int32_t _size);
 /* release the shm object
 * 
 * Using this request a client can tell the server that it is not going to
 * use the shm object anymore.
 * 
 * Objects created via this interface remain unaffected. */
-int xdwl_shm_release(xdwl_proxy *proxy);
+int xdwl_shm_release(xdwl_proxy *proxy, uint32_t wl_shm_id);
 
 
 struct xdwl_buffer_event_handlers {
@@ -591,7 +591,7 @@ XDWL_MUST_CHECK int xdwl_buffer_add_listener(xdwl_proxy *proxy, struct xdwl_buff
 * storage is defined by the buffer factory interface.
 * 
 * For possible side-effects to a surface, see wl_surface.attach. */
-int xdwl_buffer_destroy(xdwl_proxy *proxy);
+int xdwl_buffer_destroy(xdwl_proxy *proxy, uint32_t wl_buffer_id);
 
 enum xdwl_data_offer_error {
 
@@ -687,7 +687,7 @@ XDWL_MUST_CHECK int xdwl_data_offer_add_listener(xdwl_proxy *proxy, struct xdwl_
 * will be cancelled and the corresponding drag source will receive
 * wl_data_source.cancelled. Clients may still use this event in
 * conjunction with wl_data_source.action for feedback. */
-int xdwl_data_offer_accept(xdwl_proxy *proxy, uint32_t _serial, const char *_mime_type);
+int xdwl_data_offer_accept(xdwl_proxy *proxy, uint32_t wl_data_offer_id, uint32_t _serial, const char *_mime_type);
 /* request that the data is transferred
 * 
 * To transfer the offered data, the client issues this request
@@ -705,11 +705,11 @@ int xdwl_data_offer_accept(xdwl_proxy *proxy, uint32_t _serial, const char *_mim
 * both before and after wl_data_device.drop. Drag-and-drop destination
 * clients may preemptively fetch data or examine it more closely to
 * determine acceptance. */
-int xdwl_data_offer_receive(xdwl_proxy *proxy, const char *_mime_type, int _fd);
+int xdwl_data_offer_receive(xdwl_proxy *proxy, uint32_t wl_data_offer_id, const char *_mime_type, int _fd);
 /* destroy data offer
 * 
 * Destroy the data offer. */
-int xdwl_data_offer_destroy(xdwl_proxy *proxy);
+int xdwl_data_offer_destroy(xdwl_proxy *proxy, uint32_t wl_data_offer_id);
 /* the offer will no longer be used
 * 
 * Notifies the compositor that the drag destination successfully
@@ -726,7 +726,7 @@ int xdwl_data_offer_destroy(xdwl_proxy *proxy);
 * 
 * If wl_data_offer.finish request is received for a non drag and drop
 * operation, the invalid_finish protocol error is raised. */
-int xdwl_data_offer_finish(xdwl_proxy *proxy);
+int xdwl_data_offer_finish(xdwl_proxy *proxy, uint32_t wl_data_offer_id);
 /* set the available/preferred drag-and-drop actions
 * 
 * Sets the actions that the destination side client supports for
@@ -760,7 +760,7 @@ int xdwl_data_offer_finish(xdwl_proxy *proxy);
 * 
 * This request can only be made on drag-and-drop offers, a protocol error
 * will be raised otherwise. */
-int xdwl_data_offer_set_actions(xdwl_proxy *proxy, uint32_t _dnd_actions, uint32_t _preferred_action);
+int xdwl_data_offer_set_actions(xdwl_proxy *proxy, uint32_t wl_data_offer_id, uint32_t _dnd_actions, uint32_t _preferred_action);
 
 enum xdwl_data_source_error {
 
@@ -880,11 +880,11 @@ XDWL_MUST_CHECK int xdwl_data_source_add_listener(xdwl_proxy *proxy, struct xdwl
 * This request adds a mime type to the set of mime types
 * advertised to targets.  Can be called several times to offer
 * multiple types. */
-int xdwl_data_source_offer(xdwl_proxy *proxy, const char *_mime_type);
+int xdwl_data_source_offer(xdwl_proxy *proxy, uint32_t wl_data_source_id, const char *_mime_type);
 /* destroy the data source
 * 
 * Destroy the data source. */
-int xdwl_data_source_destroy(xdwl_proxy *proxy);
+int xdwl_data_source_destroy(xdwl_proxy *proxy, uint32_t wl_data_source_id);
 /* set the available drag-and-drop actions
 * 
 * Sets the actions that the source side client supports for this
@@ -900,7 +900,7 @@ int xdwl_data_source_destroy(xdwl_proxy *proxy);
 * used in drag-and-drop, so it must be performed before
 * wl_data_device.start_drag. Attempting to use the source other than
 * for drag-and-drop will raise a protocol error. */
-int xdwl_data_source_set_actions(xdwl_proxy *proxy, uint32_t _dnd_actions);
+int xdwl_data_source_set_actions(xdwl_proxy *proxy, uint32_t wl_data_source_id, uint32_t _dnd_actions);
 
 enum xdwl_data_device_error {
 
@@ -1022,7 +1022,7 @@ XDWL_MUST_CHECK int xdwl_data_device_add_listener(xdwl_proxy *proxy, struct xdwl
 * The given source may not be used in any further set_selection or
 * start_drag requests. Attempting to reuse a previously-used source
 * may send a used_source error. */
-int xdwl_data_device_start_drag(xdwl_proxy *proxy, uint32_t _source, uint32_t _origin, uint32_t _icon, uint32_t _serial);
+int xdwl_data_device_start_drag(xdwl_proxy *proxy, uint32_t wl_data_device_id, uint32_t _source, uint32_t _origin, uint32_t _icon, uint32_t _serial);
 /* copy data to the selection
 * 
 * This request asks the compositor to set the selection
@@ -1033,11 +1033,11 @@ int xdwl_data_device_start_drag(xdwl_proxy *proxy, uint32_t _source, uint32_t _o
 * The given source may not be used in any further set_selection or
 * start_drag requests. Attempting to reuse a previously-used source
 * may send a used_source error. */
-int xdwl_data_device_set_selection(xdwl_proxy *proxy, uint32_t _source, uint32_t _serial);
+int xdwl_data_device_set_selection(xdwl_proxy *proxy, uint32_t wl_data_device_id, uint32_t _source, uint32_t _serial);
 /* destroy data device
 * 
 * This request destroys the data device. */
-int xdwl_data_device_release(xdwl_proxy *proxy);
+int xdwl_data_device_release(xdwl_proxy *proxy, uint32_t wl_data_device_id);
 
 enum xdwl_data_device_manager_dnd_action {
 
@@ -1059,11 +1059,11 @@ enum xdwl_data_device_manager_dnd_action {
 /* create a new data source
 * 
 * Create a new data source. */
-int xdwl_data_device_manager_create_data_source(xdwl_proxy *proxy, uint32_t _id);
+int xdwl_data_device_manager_create_data_source(xdwl_proxy *proxy, uint32_t wl_data_device_manager_id, uint32_t _id);
 /* create a new data device
 * 
 * Create a new data device for a given seat. */
-int xdwl_data_device_manager_get_data_device(xdwl_proxy *proxy, uint32_t _id, uint32_t _seat);
+int xdwl_data_device_manager_get_data_device(xdwl_proxy *proxy, uint32_t wl_data_device_manager_id, uint32_t _id, uint32_t _seat);
 
 enum xdwl_shell_error {
 
@@ -1080,7 +1080,7 @@ enum xdwl_shell_error {
 * already has another role, it raises a protocol error.
 * 
 * Only one shell surface can be associated with a given surface. */
-int xdwl_shell_get_shell_surface(xdwl_proxy *proxy, uint32_t _id, uint32_t _surface);
+int xdwl_shell_get_shell_surface(xdwl_proxy *proxy, uint32_t wl_shell_id, uint32_t _id, uint32_t _surface);
 
 enum xdwl_shell_surface_resize {
 
@@ -1181,7 +1181,7 @@ XDWL_MUST_CHECK int xdwl_shell_surface_add_listener(xdwl_proxy *proxy, struct xd
 * 
 * A client must respond to a ping event with a pong request or
 * the client may be deemed unresponsive. */
-int xdwl_shell_surface_pong(xdwl_proxy *proxy, uint32_t _serial);
+int xdwl_shell_surface_pong(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, uint32_t _serial);
 /* start an interactive move
 * 
 * Start a pointer-driven move of the surface.
@@ -1189,7 +1189,7 @@ int xdwl_shell_surface_pong(xdwl_proxy *proxy, uint32_t _serial);
 * This request must be used in response to a button press event.
 * The server may ignore move requests depending on the state of
 * the surface (e.g. fullscreen or maximized). */
-int xdwl_shell_surface_move(xdwl_proxy *proxy, uint32_t _seat, uint32_t _serial);
+int xdwl_shell_surface_move(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, uint32_t _seat, uint32_t _serial);
 /* start an interactive resize
 * 
 * Start a pointer-driven resizing of the surface.
@@ -1197,13 +1197,13 @@ int xdwl_shell_surface_move(xdwl_proxy *proxy, uint32_t _seat, uint32_t _serial)
 * This request must be used in response to a button press event.
 * The server may ignore resize requests depending on the state of
 * the surface (e.g. fullscreen or maximized). */
-int xdwl_shell_surface_resize(xdwl_proxy *proxy, uint32_t _seat, uint32_t _serial, uint32_t _edges);
+int xdwl_shell_surface_resize(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, uint32_t _seat, uint32_t _serial, uint32_t _edges);
 /* make the surface a toplevel surface
 * 
 * Map the surface as a toplevel surface.
 * 
 * A toplevel surface is not fullscreen, maximized or transient. */
-int xdwl_shell_surface_set_toplevel(xdwl_proxy *proxy);
+int xdwl_shell_surface_set_toplevel(xdwl_proxy *proxy, uint32_t wl_shell_surface_id);
 /* make the surface a transient surface
 * 
 * Map the surface relative to an existing surface.
@@ -1213,7 +1213,7 @@ int xdwl_shell_surface_set_toplevel(xdwl_proxy *proxy);
 * parent surface, in surface-local coordinates.
 * 
 * The flags argument controls details of the transient behaviour. */
-int xdwl_shell_surface_set_transient(xdwl_proxy *proxy, uint32_t _parent, int32_t _x, int32_t _y, uint32_t _flags);
+int xdwl_shell_surface_set_transient(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, uint32_t _parent, int32_t _x, int32_t _y, uint32_t _flags);
 /* make the surface a fullscreen surface
 * 
 * Map the surface as a fullscreen surface.
@@ -1249,7 +1249,7 @@ int xdwl_shell_surface_set_transient(xdwl_proxy *proxy, uint32_t _parent, int32_
 * The compositor must reply to this request with a configure event
 * with the dimensions for the output on which the surface will
 * be made fullscreen. */
-int xdwl_shell_surface_set_fullscreen(xdwl_proxy *proxy, uint32_t _method, uint32_t _framerate, uint32_t _output);
+int xdwl_shell_surface_set_fullscreen(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, uint32_t _method, uint32_t _framerate, uint32_t _output);
 /* make the surface a popup surface
 * 
 * Map the surface as a popup.
@@ -1271,7 +1271,7 @@ int xdwl_shell_surface_set_fullscreen(xdwl_proxy *proxy, uint32_t _method, uint3
 * The x and y arguments specify the location of the upper left
 * corner of the surface relative to the upper left corner of the
 * parent surface, in surface-local coordinates. */
-int xdwl_shell_surface_set_popup(xdwl_proxy *proxy, uint32_t _seat, uint32_t _serial, uint32_t _parent, int32_t _x, int32_t _y, uint32_t _flags);
+int xdwl_shell_surface_set_popup(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, uint32_t _seat, uint32_t _serial, uint32_t _parent, int32_t _x, int32_t _y, uint32_t _flags);
 /* make the surface a maximized surface
 * 
 * Map the surface as a maximized surface.
@@ -1292,7 +1292,7 @@ int xdwl_shell_surface_set_popup(xdwl_proxy *proxy, uint32_t _seat, uint32_t _se
 * fullscreen shell surface.
 * 
 * The details depend on the compositor implementation. */
-int xdwl_shell_surface_set_maximized(xdwl_proxy *proxy, uint32_t _output);
+int xdwl_shell_surface_set_maximized(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, uint32_t _output);
 /* set surface title
 * 
 * Set a short title for the surface.
@@ -1302,7 +1302,7 @@ int xdwl_shell_surface_set_maximized(xdwl_proxy *proxy, uint32_t _output);
 * compositor.
 * 
 * The string must be encoded in UTF-8. */
-int xdwl_shell_surface_set_title(xdwl_proxy *proxy, const char *_title);
+int xdwl_shell_surface_set_title(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, const char *_title);
 /* set surface class
 * 
 * Set a class for the surface.
@@ -1311,7 +1311,7 @@ int xdwl_shell_surface_set_title(xdwl_proxy *proxy, const char *_title);
 * to which the surface belongs. A common convention is to use the
 * file name (or the full path if it is a non-standard location) of
 * the application's .desktop file as the class. */
-int xdwl_shell_surface_set_class(xdwl_proxy *proxy, const char *_class_);
+int xdwl_shell_surface_set_class(xdwl_proxy *proxy, uint32_t wl_shell_surface_id, const char *_class_);
 
 enum xdwl_surface_error {
 
@@ -1396,7 +1396,7 @@ XDWL_MUST_CHECK int xdwl_surface_add_listener(xdwl_proxy *proxy, struct xdwl_sur
 /* delete surface
 * 
 * Deletes the surface and invalidates its object ID. */
-int xdwl_surface_destroy(xdwl_proxy *proxy);
+int xdwl_surface_destroy(xdwl_proxy *proxy, uint32_t wl_surface_id);
 /* set the surface contents
 * 
 * Set a buffer as the content of this surface.
@@ -1464,7 +1464,7 @@ int xdwl_surface_destroy(xdwl_proxy *proxy);
 * maximise compatibility should not destroy pending buffers and should
 * ensure that they explicitly remove content from surfaces, even after
 * destroying buffers. */
-int xdwl_surface_attach(xdwl_proxy *proxy, uint32_t _buffer, int32_t _x, int32_t _y);
+int xdwl_surface_attach(xdwl_proxy *proxy, uint32_t wl_surface_id, uint32_t _buffer, int32_t _x, int32_t _y);
 /* mark part of the surface damaged
 * 
 * This request is used to describe the regions where the pending
@@ -1488,7 +1488,7 @@ int xdwl_surface_attach(xdwl_proxy *proxy, uint32_t _buffer, int32_t _x, int32_t
 * Note! New clients should not use this request. Instead damage can be
 * posted with wl_surface.damage_buffer which uses buffer coordinates
 * instead of surface coordinates. */
-int xdwl_surface_damage(xdwl_proxy *proxy, int32_t _x, int32_t _y, int32_t _width, int32_t _height);
+int xdwl_surface_damage(xdwl_proxy *proxy, uint32_t wl_surface_id, int32_t _x, int32_t _y, int32_t _width, int32_t _height);
 /* request a frame throttling hint
 * 
 * Request a notification when it is a good time to start drawing a new
@@ -1523,7 +1523,7 @@ int xdwl_surface_damage(xdwl_proxy *proxy, int32_t _x, int32_t _y, int32_t _widt
 * 
 * The callback_data passed in the callback is the current time, in
 * milliseconds, with an undefined base. */
-int xdwl_surface_frame(xdwl_proxy *proxy, uint32_t _callback);
+int xdwl_surface_frame(xdwl_proxy *proxy, uint32_t wl_surface_id, uint32_t _callback);
 /* set opaque region
 * 
 * This request sets the region of the surface that contains
@@ -1550,7 +1550,7 @@ int xdwl_surface_frame(xdwl_proxy *proxy, uint32_t _callback);
 * opaque region has copy semantics, and the wl_region object can be
 * destroyed immediately. A NULL wl_region causes the pending opaque
 * region to be set to empty. */
-int xdwl_surface_set_opaque_region(xdwl_proxy *proxy, uint32_t _region);
+int xdwl_surface_set_opaque_region(xdwl_proxy *proxy, uint32_t wl_surface_id, uint32_t _region);
 /* set input region
 * 
 * This request sets the region of the surface that can receive
@@ -1575,7 +1575,7 @@ int xdwl_surface_set_opaque_region(xdwl_proxy *proxy, uint32_t _region);
 * has copy semantics, and the wl_region object can be destroyed
 * immediately. A NULL wl_region causes the input region to be set
 * to infinite. */
-int xdwl_surface_set_input_region(xdwl_proxy *proxy, uint32_t _region);
+int xdwl_surface_set_input_region(xdwl_proxy *proxy, uint32_t wl_surface_id, uint32_t _region);
 /* commit pending surface state
 * 
 * Surface state (input, opaque, and damage regions, attached buffers,
@@ -1597,7 +1597,7 @@ int xdwl_surface_set_input_region(xdwl_proxy *proxy, uint32_t _region);
 * to affect double-buffered state.
 * 
 * Other interfaces may add further double-buffered surface state. */
-int xdwl_surface_commit(xdwl_proxy *proxy);
+int xdwl_surface_commit(xdwl_proxy *proxy, uint32_t wl_surface_id);
 /* sets the buffer transformation
 * 
 * This request sets the transformation that the client has already applied
@@ -1631,7 +1631,7 @@ int xdwl_surface_commit(xdwl_proxy *proxy);
 * If transform is not one of the values from the
 * wl_output.transform enum the invalid_transform protocol error
 * is raised. */
-int xdwl_surface_set_buffer_transform(xdwl_proxy *proxy, int32_t _transform);
+int xdwl_surface_set_buffer_transform(xdwl_proxy *proxy, uint32_t wl_surface_id, int32_t _transform);
 /* sets the buffer scaling factor
 * 
 * This request sets an optional scaling factor on how the compositor
@@ -1657,7 +1657,7 @@ int xdwl_surface_set_buffer_transform(xdwl_proxy *proxy, int32_t _transform);
 * 
 * If scale is not greater than 0 the invalid_scale protocol error is
 * raised. */
-int xdwl_surface_set_buffer_scale(xdwl_proxy *proxy, int32_t _scale);
+int xdwl_surface_set_buffer_scale(xdwl_proxy *proxy, uint32_t wl_surface_id, int32_t _scale);
 /* mark part of the surface damaged using buffer coordinates
 * 
 * This request is used to describe the regions where the pending
@@ -1692,7 +1692,7 @@ int xdwl_surface_set_buffer_scale(xdwl_proxy *proxy, int32_t _scale);
 * kinds of damage into account will have to accumulate damage from the
 * two requests separately and only transform from one to the other
 * after receiving the wl_surface.commit. */
-int xdwl_surface_damage_buffer(xdwl_proxy *proxy, int32_t _x, int32_t _y, int32_t _width, int32_t _height);
+int xdwl_surface_damage_buffer(xdwl_proxy *proxy, uint32_t wl_surface_id, int32_t _x, int32_t _y, int32_t _width, int32_t _height);
 /* set the surface contents offset
 * 
 * The x and y arguments specify the location of the new pending
@@ -1710,7 +1710,7 @@ int xdwl_surface_damage_buffer(xdwl_proxy *proxy, int32_t _x, int32_t _y, int32_
 * This request is semantically equivalent to and the replaces the x and y
 * arguments in the wl_surface.attach request in wl_surface versions prior
 * to 5. See wl_surface.attach for details. */
-int xdwl_surface_offset(xdwl_proxy *proxy, int32_t _x, int32_t _y);
+int xdwl_surface_offset(xdwl_proxy *proxy, uint32_t wl_surface_id, int32_t _x, int32_t _y);
 
 enum xdwl_seat_capability {
 
@@ -1798,7 +1798,7 @@ XDWL_MUST_CHECK int xdwl_seat_add_listener(xdwl_proxy *proxy, struct xdwl_seat_e
 * It is a protocol violation to issue this request on a seat that has
 * never had the pointer capability. The missing_capability error will
 * be sent in this case. */
-int xdwl_seat_get_pointer(xdwl_proxy *proxy, uint32_t _id);
+int xdwl_seat_get_pointer(xdwl_proxy *proxy, uint32_t wl_seat_id, uint32_t _id);
 /* return keyboard object
 * 
 * The ID provided will be initialized to the wl_keyboard interface
@@ -1809,7 +1809,7 @@ int xdwl_seat_get_pointer(xdwl_proxy *proxy, uint32_t _id);
 * It is a protocol violation to issue this request on a seat that has
 * never had the keyboard capability. The missing_capability error will
 * be sent in this case. */
-int xdwl_seat_get_keyboard(xdwl_proxy *proxy, uint32_t _id);
+int xdwl_seat_get_keyboard(xdwl_proxy *proxy, uint32_t wl_seat_id, uint32_t _id);
 /* return touch object
 * 
 * The ID provided will be initialized to the wl_touch interface
@@ -1820,12 +1820,12 @@ int xdwl_seat_get_keyboard(xdwl_proxy *proxy, uint32_t _id);
 * It is a protocol violation to issue this request on a seat that has
 * never had the touch capability. The missing_capability error will
 * be sent in this case. */
-int xdwl_seat_get_touch(xdwl_proxy *proxy, uint32_t _id);
+int xdwl_seat_get_touch(xdwl_proxy *proxy, uint32_t wl_seat_id, uint32_t _id);
 /* release the seat object
 * 
 * Using this request a client can tell the server that it is not going to
 * use the seat object anymore. */
-int xdwl_seat_release(xdwl_proxy *proxy);
+int xdwl_seat_release(xdwl_proxy *proxy, uint32_t wl_seat_id);
 
 enum xdwl_pointer_error {
 
@@ -2175,7 +2175,7 @@ XDWL_MUST_CHECK int xdwl_pointer_add_listener(xdwl_proxy *proxy, struct xdwl_poi
 * The serial parameter must match the latest wl_pointer.enter
 * serial number sent to the client. Otherwise the request will be
 * ignored. */
-int xdwl_pointer_set_cursor(xdwl_proxy *proxy, uint32_t _serial, uint32_t _surface, int32_t _hotspot_x, int32_t _hotspot_y);
+int xdwl_pointer_set_cursor(xdwl_proxy *proxy, uint32_t wl_pointer_id, uint32_t _serial, uint32_t _surface, int32_t _hotspot_x, int32_t _hotspot_y);
 /* release the pointer object
 * 
 * Using this request a client can tell the server that it is not going to
@@ -2183,7 +2183,7 @@ int xdwl_pointer_set_cursor(xdwl_proxy *proxy, uint32_t _serial, uint32_t _surfa
 * 
 * This request destroys the pointer proxy object, so clients must not call
 * wl_pointer_destroy() after using this request. */
-int xdwl_pointer_release(xdwl_proxy *proxy);
+int xdwl_pointer_release(xdwl_proxy *proxy, uint32_t wl_pointer_id);
 
 enum xdwl_keyboard_keymap_format {
 
@@ -2320,7 +2320,7 @@ struct xdwl_keyboard_event_handlers {
 XDWL_MUST_CHECK int xdwl_keyboard_add_listener(xdwl_proxy *proxy, struct xdwl_keyboard_event_handlers *event_handlers, void *user_data);
 
 
-int xdwl_keyboard_release(xdwl_proxy *proxy);
+int xdwl_keyboard_release(xdwl_proxy *proxy, uint32_t wl_keyboard_id);
 
 
 struct xdwl_touch_event_handlers {
@@ -2435,7 +2435,7 @@ struct xdwl_touch_event_handlers {
 XDWL_MUST_CHECK int xdwl_touch_add_listener(xdwl_proxy *proxy, struct xdwl_touch_event_handlers *event_handlers, void *user_data);
 
 
-int xdwl_touch_release(xdwl_proxy *proxy);
+int xdwl_touch_release(xdwl_proxy *proxy, uint32_t wl_touch_id);
 
 enum xdwl_output_subpixel {
 
@@ -2653,21 +2653,21 @@ XDWL_MUST_CHECK int xdwl_output_add_listener(xdwl_proxy *proxy, struct xdwl_outp
 * 
 * Using this request a client can tell the server that it is not going to
 * use the output object anymore. */
-int xdwl_output_release(xdwl_proxy *proxy);
+int xdwl_output_release(xdwl_proxy *proxy, uint32_t wl_output_id);
 
 
 /* destroy region
 * 
 * Destroy the region.  This will invalidate the object ID. */
-int xdwl_region_destroy(xdwl_proxy *proxy);
+int xdwl_region_destroy(xdwl_proxy *proxy, uint32_t wl_region_id);
 /* add rectangle to region
 * 
 * Add the specified rectangle to the region. */
-int xdwl_region_add(xdwl_proxy *proxy, int32_t _x, int32_t _y, int32_t _width, int32_t _height);
+int xdwl_region_add(xdwl_proxy *proxy, uint32_t wl_region_id, int32_t _x, int32_t _y, int32_t _width, int32_t _height);
 /* subtract rectangle from region
 * 
 * Subtract the specified rectangle from the region. */
-int xdwl_region_subtract(xdwl_proxy *proxy, int32_t _x, int32_t _y, int32_t _width, int32_t _height);
+int xdwl_region_subtract(xdwl_proxy *proxy, uint32_t wl_region_id, int32_t _x, int32_t _y, int32_t _width, int32_t _height);
 
 enum xdwl_subcompositor_error {
 
@@ -2685,7 +2685,7 @@ enum xdwl_subcompositor_error {
 * Informs the server that the client will not be using this
 * protocol object anymore. This does not affect any other
 * objects, wl_subsurface objects included. */
-int xdwl_subcompositor_destroy(xdwl_proxy *proxy);
+int xdwl_subcompositor_destroy(xdwl_proxy *proxy, uint32_t wl_subcompositor_id);
 /* give a surface the role sub-surface
 * 
 * Create a sub-surface interface for the given surface, and
@@ -2707,7 +2707,7 @@ int xdwl_subcompositor_destroy(xdwl_proxy *proxy);
 * 
 * This request modifies the behaviour of wl_surface.commit request on
 * the sub-surface, see the documentation on wl_subsurface interface. */
-int xdwl_subcompositor_get_subsurface(xdwl_proxy *proxy, uint32_t _id, uint32_t _surface, uint32_t _parent);
+int xdwl_subcompositor_get_subsurface(xdwl_proxy *proxy, uint32_t wl_subcompositor_id, uint32_t _id, uint32_t _surface, uint32_t _parent);
 
 enum xdwl_subsurface_error {
 
@@ -2723,7 +2723,7 @@ enum xdwl_subsurface_error {
 * that was turned into a sub-surface with a
 * wl_subcompositor.get_subsurface request. The wl_surface's association
 * to the parent is deleted. The wl_surface is unmapped immediately. */
-int xdwl_subsurface_destroy(xdwl_proxy *proxy);
+int xdwl_subsurface_destroy(xdwl_proxy *proxy, uint32_t wl_subsurface_id);
 /* reposition the sub-surface
 * 
 * This schedules a sub-surface position change.
@@ -2740,7 +2740,7 @@ int xdwl_subsurface_destroy(xdwl_proxy *proxy);
 * replaces the scheduled position from any previous request.
 * 
 * The initial position is 0, 0. */
-int xdwl_subsurface_set_position(xdwl_proxy *proxy, int32_t _x, int32_t _y);
+int xdwl_subsurface_set_position(xdwl_proxy *proxy, uint32_t wl_subsurface_id, int32_t _x, int32_t _y);
 /* restack the sub-surface
 * 
 * This sub-surface is taken from the stack, and put back just
@@ -2756,12 +2756,12 @@ int xdwl_subsurface_set_position(xdwl_proxy *proxy, int32_t _x, int32_t _y);
 * 
 * A new sub-surface is initially added as the top-most in the stack
 * of its siblings and parent. */
-int xdwl_subsurface_place_above(xdwl_proxy *proxy, uint32_t _sibling);
+int xdwl_subsurface_place_above(xdwl_proxy *proxy, uint32_t wl_subsurface_id, uint32_t _sibling);
 /* restack the sub-surface
 * 
 * The sub-surface is placed just below the reference surface.
 * See wl_subsurface.place_above. */
-int xdwl_subsurface_place_below(xdwl_proxy *proxy, uint32_t _sibling);
+int xdwl_subsurface_place_below(xdwl_proxy *proxy, uint32_t wl_subsurface_id, uint32_t _sibling);
 /* set sub-surface to synchronized mode
 * 
 * Change the commit behaviour of the sub-surface to synchronized
@@ -2777,7 +2777,7 @@ int xdwl_subsurface_place_below(xdwl_proxy *proxy, uint32_t _sibling);
 * parent surface commits do not (re-)apply old state.
 * 
 * See wl_subsurface for the recursive effect of this mode. */
-int xdwl_subsurface_set_sync(xdwl_proxy *proxy);
+int xdwl_subsurface_set_sync(xdwl_proxy *proxy, uint32_t wl_subsurface_id);
 /* set sub-surface to desynchronized mode
 * 
 * Change the commit behaviour of the sub-surface to desynchronized
@@ -2799,10 +2799,10 @@ int xdwl_subsurface_set_sync(xdwl_proxy *proxy);
 * 
 * If a surface's parent surface behaves as desynchronized, then
 * the cached state is applied on set_desync. */
-int xdwl_subsurface_set_desync(xdwl_proxy *proxy);
+int xdwl_subsurface_set_desync(xdwl_proxy *proxy, uint32_t wl_subsurface_id);
 
 
-int xdwl_fixes_destroy(xdwl_proxy *proxy);
+int xdwl_fixes_destroy(xdwl_proxy *proxy, uint32_t wl_fixes_id);
 /* destroy a wl_registry
 * 
 * This request destroys a wl_registry object.
@@ -2814,7 +2814,7 @@ int xdwl_fixes_destroy(xdwl_proxy *proxy);
 * of the registry and will no longer emit any events on the registry. The
 * client should re-use the object ID once it receives the
 * wl_display.delete_id event. */
-int xdwl_fixes_destroy_registry(xdwl_proxy *proxy, uint32_t _registry);
+int xdwl_fixes_destroy_registry(xdwl_proxy *proxy, uint32_t wl_fixes_id, uint32_t _registry);
 
 
 #endif

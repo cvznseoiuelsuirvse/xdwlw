@@ -190,10 +190,7 @@ void xdwl_list_remove(xdwl_list **head, size_t n) {
         *head = l->next;
       }
 
-      if (l->next) {
-        l->next->prev = l->prev;
-      }
-
+      l->next->prev = l->prev;
       free(l->data);
       free(l);
       break;

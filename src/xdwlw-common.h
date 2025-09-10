@@ -10,6 +10,9 @@
 #include <unistd.h>
 
 #define BPP 4
+#define ENSURE_RESULT(n)                                                       \
+  if ((n) == -1)                                                               \
+  xdwlw_exit(0)
 
 static void xdwlw_log(const char *level, const char *message, ...) {
   va_list args;

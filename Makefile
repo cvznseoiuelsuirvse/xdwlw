@@ -6,11 +6,10 @@ BIN_DIR = bin
 LIBS_DIR = libs
 PROTOCOLS_DIR = protocols
 
-CPPFLAGS = -I$(LIBS_DIR) -I$(LIBS_DIR)/libxdwayland/src
-LDLIBS = -lm
+SYS_BIN_DIR = /usr/bin
 
-PY_SRCS = $(wildcard $(LIBS_DIR)/*/src/*.py)
-PY_INSTALL_DIR = $(HOME)/.local/bin
+CPPFLAGS = -I$(LIBS_DIR)/ -I$(LIBS_DIR)/libxdwayland/src
+LDLIBS = -lm
 
 PROTOCOL_SRCS = \
     wlr-layer-shell-unstable-v1-protocol.c \
@@ -21,26 +20,24 @@ PROTOCOL_SRCS = \
 MAIN_SRCS = $(SRC_DIR)/xdwlw-ipc.c $(SRC_DIR)/xdwlw.c $(SRC_DIR)/xdwlw-error.c
 MAIN_OBJS = $(MAIN_SRCS:%.c=$(DIST_DIR)/%.o)
 
-DAEMON_SRCS = $(PROTOCOL_SRCS) $(SRC_DIR)/xdwlw-handlers.c $(SRC_DIR)/xdwlw-ipc.c $(SRC_DIR)/xdwlw-outputs.c $(SRC_DIR)/xdwlwd.c $(SRC_DIR)/xdwlw-error.c $(wildcard $(LIBS_DIR)/*/src/*.c)
+DAEMON_SRCS = $(PROTOCOL_SRCS) $(SRC_DIR)/xdwlw-ipc.c $(SRC_DIR)/xdwlwd.c $(SRC_DIR)/xdwlw-error.c $(wildcard $(LIBS_DIR)/*/src/*.c) $(wildcard *protocol.c)
 DAEMON_OBJS = $(DAEMON_SRCS:%.c=$(DIST_DIR)/%.o)
-
-DEBUG = 
-# DEBUG = -DDEBUG
 
 MAIN = $(BIN_DIR)/xdwlw
 DAEMON = $(BIN_DIR)/xdwlwd
+SCANNER = $(LIBS_DIR)/libxdwayland/src/xdwayland-scanner.py
 
 MAIN_DEBUG = $(BIN_DIR)/debug
 DAEMON_DEBUG = $(BIN_DIR)/debugd
 
-.PHONY: all clean debug main xdwayland-scanner
+.PHONY: all clean debug main install uninstall
 
 all: main
 
-main: $(MAIN) $(DAEMON) xdwayland-scanner
+main: $(MAIN) $(DAEMON)
 main: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter
 
-debug: $(MAIN_DEBUG) $(DAEMON_DEBUG) xdwayland-scanner
+debug: $(MAIN_DEBUG) $(DAEMON_DEBUG)
 debug: CFLAGS = -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -g
 
 
@@ -54,37 +51,32 @@ $(DAEMON): $(DAEMON_OBJS)
 
 $(MAIN_DEBUG): $(MAIN_SRCS)
 	mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS $(DEBUG) -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS -o $@ $^ $(LDLIBS)
 
 $(DAEMON_DEBUG): $(DAEMON_SRCS)
 	mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS $(DEBUG) -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -DLOGS -o $@ $^ $(LDLIBS)
 
 $(DIST_DIR)/%.o: %.c
 	mkdir -p $(dir $@)
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $(LOGS) -o $@ $<
 
-xdwayland-scanner: $(LIBS_DIR)/libxdwayland/src/xdwayland-scanner.py
-	mkdir -p $(PY_INSTALL_DIR)
-	install -m 755 $< $(PY_INSTALL_DIR)/$@
+wlr-layer-shell-unstable-v1-protocol.c:
+	$(SCANNER) $(PROTOCOLS_DIR)/wlr-layer-shell-unstable-v1.xml wlr-layer-shell-unstable-v1-protocol
 
-wlr-layer-shell-unstable-v1-protocol.c: xdwayland-scanner
-	xdwayland-scanner $(PROTOCOLS_DIR)/wlr-layer-shell-unstable-v1.xml wlr-layer-shell-unstable-v1-protocol
+xdg-output-unstable-v1-protocol.c:
+	$(SCANNER) /usr/share/wayland-protocols/unstable/xdg-output/xdg-output-unstable-v1.xml xdg-output-unstable-v1-protocol
 
-xdg-output-unstable-v1-protocol.c: xdwayland-scanner
-	xdwayland-scanner /usr/share/wayland-protocols/unstable/xdg-output/xdg-output-unstable-v1.xml xdg-output-unstable-v1-protocol
-
-viewporter-protocol.c: xdwayland-scanner
-	xdwayland-scanner /usr/share/wayland-protocols/stable/viewporter/viewporter.xml viewporter-protocol
+viewporter-protocol.c:
+	$(SCANNER) /usr/share/wayland-protocols/stable/viewporter/viewporter.xml viewporter-protocol
 
 install:
-	cp $(MAIN) /usr/bin/
-	cp $(DAEMON) /usr/bin/
+	cp $(MAIN) $(SYS_BIN_DIR)
+	cp $(DAEMON) $(SYS_BIN_DIR)
 
 uninstall:
-	rm -f /usr/bin/$(basename $(MAIN))
-	rm -f /usr/bin/$(basename $(DAEMON))
-	rm -f $(PY_INSTALL_DIR)/xdwayland-scanner
+	rm -f /usr/bin/$(notdir $(MAIN))
+	rm -f /usr/bin/$(notdir $(DAEMON))
 
 clean:
 	rm -rf $(DIST_DIR) $(BIN_DIR)

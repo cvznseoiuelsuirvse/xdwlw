@@ -46,6 +46,8 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
                 method = ""
 
             method += f"int xd{interface_name}_{request_name}(xdwl_proxy *proxy, "
+            if interface_name != "wl_display":
+                method += f"uint32_t {interface_name}_id, "
 
             args = []
             signature = ""
@@ -90,11 +92,19 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
             if not header:
                 method += " {\n"
                 if args:
-                    method += f'    return xdwl_send_request(proxy, "{interface_name}", {i}, {len(args)}, {", ".join(args)});\n'
+                    if interface_name != "wl_display":
+                        method += f'    return xdwl_send_request(proxy, {interface_name}_id, "{interface_name}", {i}, {len(args)}, {", ".join(args)});\n'
+                    else:
+                        method += f'    return xdwl_send_request(proxy, 1, "{interface_name}", {i}, {len(args)}, {", ".join(args)});\n'
+
                     request_struct += f'{len(args)}, "{signature}"}},\n'
 
                 else:
-                    method += f'    return xdwl_send_request(proxy, "{interface_name}", {i}, 0);\n'
+                    if interface_name != "wl_display":
+                        method += f'    return xdwl_send_request(proxy, {interface_name}_id, "{interface_name}", {i}, 0);\n'
+                    else:
+                        method += f'    return xdwl_send_request(proxy, 1, "{interface_name}", {i}, 0);\n'
+
                     request_struct += f"0, NULL}},\n"
 
                 method += "}"
@@ -108,13 +118,13 @@ def generate_requests(interface_name: str, cur: ET.Element, *, header: bool) -> 
         return requests, requests_array
 
 
-def generate_add_listener(interface_name: str, *, header: bool) -> str:
+def generate_add_listener(interface_name: str, cur: ET.Element, *, header: bool) -> str:
     if header:
         listener = f"XDWL_MUST_CHECK int xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name}_event_handlers *event_handlers, void *user_data);"
 
     else:
         listener = f"""int xd{interface_name}_add_listener(xdwl_proxy *proxy, struct xd{interface_name}_event_handlers *event_handlers, void *user_data) {{
-      return xdwl_add_listener(proxy, \"{interface_name}\", event_handlers, user_data);
+      return xdwl_add_listener(proxy, \"{interface_name}\", event_handlers, sizeof(void *) * {len(cur.findall("./event"))}, user_data);
 }};"""
 
     return listener
@@ -245,10 +255,10 @@ def generate_interface(cur: ET.Element, h: TextIOWrapper, c: TextIOWrapper) -> N
 
     if events_h and events_c:
         h.write("\n" + events_h[0] + "\n")
-        h.write(generate_add_listener(interface_name, header=True) + "\n\n")
+        h.write(generate_add_listener(interface_name, cur, header=True) + "\n\n")
 
         c.write("\n" + events_c[0])
-        c.write(generate_add_listener(interface_name, header=False) + "\n\n")
+        c.write(generate_add_listener(interface_name, cur, header=False) + "\n\n")
 
     if requests_h and requests_c:
         h.write("\n" + requests_h[0] + "\n")
@@ -286,8 +296,6 @@ def generate(input: str, output_path_base: str) -> None:
 
 #ifdef __GNUC__
 #define XDWL_ADD_TO_SECTION __attribute__((used, section("xdwl_interfaces"), aligned(8)))
-#else
-#error "Only gcc supported"
 #endif
 
 """

@@ -2,52 +2,350 @@
 #include "xdwayland-collections.h"
 #include "xdwayland-core.h"
 #include "xdwayland-types.h"
-#include <stddef.h>
+#include <string.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 #include "../wlr-layer-shell-unstable-v1-protocol.h"
+#include "../xdg-output-unstable-v1-protocol.h"
 #include "xdwlw-common.h"
 #include "xdwlw-error.h"
 #include "xdwlw-ipc.h"
-#include "xdwlw-outputs.h"
 #include "xdwlw-types.h"
 
 #include <dirent.h>
-#include <linux/limits.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #define LERP(v0, v1, t) ((1 - t) * v0 + t * v1);
 #define COLOR(hex)                                                             \
   {((hex >> 24) & 0xFF), ((hex >> 16) & 0xFF), ((hex >> 8) & 0xFF),            \
    (hex & 0xFF)}
 
-#define ENSURE_RESULT(n)                                                       \
-  if ((n) == -1)                                                               \
-  xdwlw_exit()
-
 enum wallpaper_type { IMAGE = 0x10, COLOR = 0x20 };
 
 int sfd;
 xdwl_proxy *proxy;
-xdwl_list *global_listeners;
+xdwl_list *outputs = NULL;
 
-void xdwlw_exit();
+xdwl_list *xdwlw_init();
+void bind_globals();
+void xdwlw_exit(int sig);
+
+void read_from_cache(struct output *o);
+void write_to_cache(struct output *o);
+
+void create_layer_surface(struct output *o);
 void apply(struct output *o);
+void create_output_buffer(struct output *o);
+void destroy_output_buffer(struct output *o);
 
-void handle_wl_registry_global(void *globals, xdwl_arg *args);
 void handle_wl_display_error(void *_, xdwl_arg *args);
 void handle_wl_display_delete_id(void *_, xdwl_arg *args);
-void handle_wl_output_mode(void *outputs, xdwl_arg *args);
+void handle_wl_registry_global(void *_, xdwl_arg *args);
+void handle_wl_output_mode(void *_, xdwl_arg *args);
+void handle_wl_output_name(void *_, xdwl_arg *args);
 void handle_xdg_output_logical_size(void *output, xdwl_arg *args);
-void handle_xdg_output_name(void *output, xdwl_arg *args);
+void handle_zwlr_layer_surface_v1_closed(void *output, xdwl_arg *args);
 void handle_zwlr_layer_surface_v1_configure(void *output, xdwl_arg *args);
 
-static const char *get_cache_path() {
+uint32_t *resize_image_nni(uint32_t *i_buffer, size_t i_width, size_t i_height,
+                           size_t o_width, size_t o_height);
+
+int draw_image_on_output(struct output *o);
+int draw_color_on_output(struct output *o);
+void apply_saved_wallpapers(struct output *o);
+
+void handle_wl_output_mode(void *_, xdwl_arg *args) {
+  xdwl_list *l;
+  struct output *o;
+  xdwl_list_for_each(l, outputs, o) {
+    if (o->id == args[0].object_id) {
+      o->width = args[2].i;
+      o->height = args[3].i;
+    }
+  }
+};
+
+void handle_wl_output_name(void *_, xdwl_arg *args) {
+  struct output *new_output = NULL;
+  uint32_t new_output_id = args[0].object_id;
+  const char *new_output_name = args[1].s;
+
+  struct output *old_output = NULL;
+  size_t old_output_idx;
+
+  xdwl_list *l;
+  struct output *o;
+
+  size_t i = 0;
+
+  xdwl_list_for_each(l, outputs, o) {
+    uint32_t output_id = o->id;
+    const char *output_name = o->name;
+    if (o->name != NULL && STREQ(output_name, new_output_name)) {
+      old_output = o;
+      old_output_idx = i;
+
+    } else if (output_id == new_output_id) {
+      new_output = o;
+    }
+    i++;
+  }
+
+  if (!new_output) {
+    xdwlw_error_set(XDWLWE_NOOUPUT, "no wl_output#%ld found",
+                    args[0].object_id);
+    xdwlw_exit(0);
+  }
+
+  if (old_output != NULL) {
+    new_output->id = new_output_id;
+    new_output->name = old_output->name;
+    new_output->color = old_output->color;
+    new_output->image_path = old_output->image_path;
+    new_output->image_mode = old_output->image_mode;
+    new_output->buffer = old_output->buffer;
+    new_output->surface_id = old_output->surface_id;
+    xdwl_list_remove(&outputs, old_output_idx);
+
+  } else {
+    new_output->name = strdup(new_output_name);
+  }
+}
+
+void handle_xdg_output_logical_size(void *output, xdwl_arg *args) {
+  ((struct output *)output)->logical_width = args[1].i;
+  ((struct output *)output)->logical_height = args[2].i;
+};
+
+void get_output_logical_size(struct output *o) {
+  struct xdzxdg_output_v1_event_handlers zxdg_output_v1 = {
+      .logical_size = handle_xdg_output_logical_size,
+  };
+
+  uint32_t zxdg_output_id = xdwl_object_register(proxy, 0, "zxdg_output_v1");
+  ENSURE_RESULT(xdzxdg_output_v1_add_listener(proxy, &zxdg_output_v1, o));
+
+  xdzxdg_output_manager_v1_get_xdg_output(proxy, 0, zxdg_output_id, o->id);
+  ENSURE_RESULT(xdwl_roundtrip(proxy));
+}
+
+void create_output_buffer(struct output *o) {
+  size_t wl_shm_pool_id;
+  size_t wl_buffer_id;
+
+  char name[255];
+  snprintf(name, 255, "xdwlw-shm-%x", rand());
+
+  int32_t buffer_size = o->width * o->height * BPP;
+
+  int fd = shm_open(name, O_RDWR | O_EXCL | O_CREAT, 0600);
+  shm_unlink(name);
+
+  if (fd == -1) {
+    perror("shm_open");
+    xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
+                    o->name);
+    xdwlw_exit(0);
+  }
+
+  if (ftruncate(fd, buffer_size) == -1) {
+    perror("ftruncate");
+    xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
+                    o->name);
+    xdwlw_exit(0);
+  }
+
+  xdwl_object *wl_shm_pool_object =
+      xdwl_object_get_by_name(proxy, "wl_shm_pool");
+
+  if (wl_shm_pool_object == NULL) {
+    wl_shm_pool_id = xdwl_object_register(proxy, 0, "wl_shm_pool");
+    xdwl_shm_create_pool(proxy, 0, wl_shm_pool_id, fd, buffer_size);
+  } else {
+    wl_shm_pool_id = wl_shm_pool_object->id;
+  }
+
+  wl_buffer_id = xdwl_object_register(proxy, 0, "wl_buffer");
+  xdwl_shm_pool_create_buffer(proxy, 0, wl_buffer_id, 0, o->width, o->height,
+                              o->width * BPP, XDWL_SHM_FORMAT_ARGB8888);
+
+  uint32_t *buffer =
+      mmap(NULL, buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+  if (buffer == MAP_FAILED) {
+    perror("mmap");
+    xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
+                    o->name);
+    xdwlw_exit(0);
+  }
+
+  xdwlw_log("info", "initialized buffer %s with a size of %d", name,
+            buffer_size);
+
+  o->buffer = buffer;
+}
+
+void destroy_output_buffer(struct output *o) {
+  if (!o)
+    return;
+
+  munmap(o->buffer, o->width * o->height * BPP);
+  o->buffer = NULL;
+}
+
+void handle_zwlr_layer_surface_v1_closed(void *output, xdwl_arg *args) {
+  ENSURE_RESULT(xdzwlr_layer_surface_v1_destroy(proxy, args[0].object_id));
+  ENSURE_RESULT(
+      xdwl_surface_destroy(proxy, ((struct output *)output)->surface_id));
+
+  xdwl_destroy_listener(args[0].object_id);
+  xdwlw_log("info", "wlr_layer_surface#%ld was destroyed", args[0].object_id);
+}
+
+void handle_zwlr_layer_surface_v1_configure(void *output, xdwl_arg *args) {
+  struct output *o = output;
+
+  uint32_t serial = args[1].u;
+  uint32_t width = args[2].u;
+  uint32_t height = args[3].u;
+
+  xdzwlr_layer_surface_v1_ack_configure(proxy, 0, serial);
+
+  if (o->width != width || o->height != height) {
+    destroy_output_buffer(o);
+
+    o->width = width;
+    o->height = height;
+  }
+
+  if (o->buffer == NULL) {
+    create_output_buffer(o);
+  }
+}
+
+void create_surface(struct output *o) {
+  int wl_surface_id = xdwl_object_register(proxy, 0, "wl_surface");
+  if (wl_surface_id == -1)
+    xdwlw_exit(0);
+
+  if (xdwl_compositor_create_surface(proxy, 0, wl_surface_id) == -1)
+    xdwlw_exit(0);
+
+  o->surface_id = wl_surface_id;
+}
+
+void create_layer_surface(struct output *o) {
+  int wlr_layer_surface_id =
+      xdwl_object_register(proxy, 0, "zwlr_layer_surface_v1");
+  if (wlr_layer_surface_id == -1)
+    xdwlw_exit(0);
+
+  if (xdzwlr_layer_shell_v1_get_layer_surface(
+          proxy, 0, wlr_layer_surface_id, o->surface_id, o->id,
+          XDZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND, o->name) == -1)
+    xdwlw_exit(0);
+
+  xdzwlr_layer_surface_v1_set_size(proxy, 0, o->logical_width,
+                                   o->logical_height);
+
+  xdzwlr_layer_surface_v1_set_anchor(proxy, 0,
+                                     XDZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
+  xdzwlr_layer_surface_v1_set_anchor(proxy, 0,
+                                     XDZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+
+  struct xdzwlr_layer_surface_v1_event_handlers zwlr_layer_surface_v1 = {
+      .configure = handle_zwlr_layer_surface_v1_configure,
+      .closed = handle_zwlr_layer_surface_v1_closed};
+
+  ENSURE_RESULT(
+      xdzwlr_layer_surface_v1_add_listener(proxy, &zwlr_layer_surface_v1, o));
+
+  xdwl_surface_commit(proxy, 0);
+  ENSURE_RESULT(xdwl_roundtrip(proxy));
+}
+
+void handle_wl_registry_global(void *_, xdwl_arg *args) {
+  uint32_t name = args[1].u;
+  const char *interface = args[2].s;
+  uint32_t version = args[3].u;
+
+  int new_id = 0;
+
+  if (STREQ(interface, "wl_shm") || STREQ(interface, "wl_compositor") ||
+      STREQ(interface, "wp_viewporter") ||
+      STREQ(interface, "zwlr_layer_shell_v1") ||
+      STREQ(interface, "zxdg_output_manager_v1")) {
+
+    new_id = xdwl_object_register(proxy, 0, interface);
+    if (new_id == -1) {
+      xdwlw_error_set(XDWLWE_NOIFACE, "failed to register %s", interface);
+      xdwlw_exit(0);
+    }
+
+    xdwl_registry_bind(proxy, 0, name, interface, version, new_id);
+    ENSURE_RESULT(xdwl_roundtrip(proxy));
+  } else if (STREQ(interface, "wl_output")) {
+    new_id = xdwl_object_register(proxy, 0, interface);
+    if (new_id == -1) {
+      xdwlw_error_set(XDWLWE_NOIFACE, "failed to register %s", interface);
+      xdwlw_exit(0);
+    }
+
+    struct xdwl_output_event_handlers wl_output_event_handers = {
+        .mode = handle_wl_output_mode,
+        .name = handle_wl_output_name,
+    };
+    ENSURE_RESULT(
+        xdwl_output_add_listener(proxy, &wl_output_event_handers, NULL));
+
+    struct output *o;
+    if ((o = xdwl_list_push(outputs,
+                            &(struct output){
+                                .id = new_id,
+                                .buffer = NULL,
+                                .color = -1,
+                                .image_mode = 0,
+                                .image_path = NULL,
+                            },
+                            sizeof(struct output))) == NULL) {
+      xdwlw_exit(0);
+    };
+
+    xdwl_registry_bind(proxy, 0, name, interface, version, new_id);
+    ENSURE_RESULT(xdwl_roundtrip(proxy));
+    get_output_logical_size(o);
+
+    xdwlw_log("info", "found output: %s %dx%d (%dx%d)", o->name, o->width,
+              o->height, o->logical_width, o->logical_height);
+
+    create_surface(o);
+    create_layer_surface(o);
+    apply_saved_wallpapers(o);
+  }
+}
+
+void handle_wl_display_error(void *_, xdwl_arg *args) {
+  uint32_t object_id = args[1].u;
+  uint32_t code = args[2].u;
+  const char *message = args[3].s;
+
+  const xdwl_object *object = xdwl_object_get_by_id(proxy, object_id);
+  const char *object_name = object->name;
+
+  printf("%s#%d ERROR %d: %s\n", object_name, object_id, code, message);
+}
+
+void handle_wl_display_delete_id(void *_, xdwl_arg *args) {
+  size_t object_id = args[1].u;
+  assert(xdwl_object_unregister(proxy, object_id) == 0);
+};
+
+const char *get_cache_path() {
   char usr_cache_path[PATH_MAX - 12];
   static char cache_path[PATH_MAX];
   const char *home = getenv("HOME");
@@ -186,171 +484,64 @@ int draw_color_on_output(struct output *o) {
   return 0;
 };
 
+void apply_saved_wallpapers(struct output *o) {
+  if (o->image_path != NULL && o->image_mode != 0) {
+    if (draw_image_on_output(o) != 0)
+      xdwlw_exit(0);
+
+  } else if (o->color != -1) {
+    if (draw_color_on_output(o) != 0)
+      xdwlw_exit(0);
+  }
+}
+
 void apply(struct output *o) {
   xdwl_object *wl_buffer_object = xdwl_object_get_by_name(proxy, "wl_buffer");
   if (!wl_buffer_object) {
-    xdwlw_exit();
+    xdwlw_exit(0);
   }
 
   uint32_t wl_buffer_id = wl_buffer_object->id;
-  xdwl_surface_attach(proxy, wl_buffer_id, 0, 0);
-  xdwl_surface_damage_buffer(proxy, 0, 0, o->width * BPP, o->height);
-  xdwl_surface_commit(proxy);
+  xdwl_surface_attach(proxy, 0, wl_buffer_id, 0, 0);
+  xdwl_surface_damage_buffer(proxy, 0, 0, 0, o->width * BPP, o->height);
+  xdwl_surface_commit(proxy, 0);
   ENSURE_RESULT(xdwl_roundtrip(proxy));
 }
 
-void create_layer_surface(struct output *o) {
-  int wl_surface_id;
-  int wlr_layer_surface_id;
-
-  wl_surface_id = xdwl_object_register(proxy, 0, "wl_surface");
-  if (wl_surface_id == -1)
-    xdwlw_exit();
-
-  wlr_layer_surface_id =
-      xdwl_object_register(proxy, 0, "zwlr_layer_surface_v1");
-  if (wlr_layer_surface_id == -1)
-    xdwlw_exit();
-
-  if (xdwl_compositor_create_surface(proxy, wl_surface_id) == -1)
-    xdwlw_exit();
-
-  if (xdzwlr_layer_shell_v1_get_layer_surface(
-          proxy, wlr_layer_surface_id, wl_surface_id, o->id,
-          XDZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND, o->name) == -1)
-    xdwlw_exit();
-
-  xdzwlr_layer_surface_v1_set_size(proxy, o->logical_width, o->logical_height);
-
-  xdzwlr_layer_surface_v1_set_anchor(proxy, XDZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
-  xdzwlr_layer_surface_v1_set_anchor(proxy,
-                                     XDZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
-
-  struct xdzwlr_layer_surface_v1_event_handlers *zwlr_layer_surface_v1 =
-      xdwl_list_push(global_listeners,
-                     &(struct xdzwlr_layer_surface_v1_event_handlers){
-                         .configure = handle_zwlr_layer_surface_v1_configure},
-                     sizeof(struct xdzwlr_layer_surface_v1_event_handlers));
-
-  ENSURE_RESULT(
-      xdzwlr_layer_surface_v1_add_listener(proxy, zwlr_layer_surface_v1, o));
-
-  xdwl_surface_commit(proxy);
-  ENSURE_RESULT(xdwl_roundtrip(proxy));
-}
-
-void show_not_supported_interfaces(size_t n) {
-  if (n & ZWLR_LAYER_SHELL_V1) {
-    printf("zwlr_layer_shell_v1 isn't supported by the compositor\n");
-  } else if (n & WP_VIEWPORTER) {
-    printf("wp_viewporter isn't supported by the compositor\n");
-  } else if (n & ZXDG_OUTPUT_MANAGER_V1) {
-    printf("zxdg_output_manager_v1 isn't supported by the compositor\n");
-  }
-}
-
-size_t bind_globals(xdwl_proxy *proxy, xdwl_list **globals) {
-  /* main
-   * wl_shm, wl_compositor, zwlr_layer_shell_v1, wp_viewporter
-   *
-   * for outputs
-   * wl_output, zxdg_output_manager_v1 */
-
+void bind_globals() {
   size_t wl_registry_id = xdwl_object_register(proxy, 0, "wl_registry");
 
-  struct xdwl_registry_event_handlers *wl_registry =
-      xdwl_list_push(global_listeners,
-                     &(struct xdwl_registry_event_handlers){
-                         .global = handle_wl_registry_global},
-                     sizeof(struct xdwl_registry_event_handlers));
+  struct xdwl_registry_event_handlers wl_registry_event_handlers = {
+      .global = handle_wl_registry_global};
 
-  ENSURE_RESULT(xdwl_registry_add_listener(proxy, wl_registry, *globals));
+  ENSURE_RESULT(
+      xdwl_registry_add_listener(proxy, &wl_registry_event_handlers, NULL));
 
   xdwl_display_get_registry(proxy, wl_registry_id);
   ENSURE_RESULT(xdwl_roundtrip(proxy));
-
-  size_t n = WP_VIEWPORTER | ZWLR_LAYER_SHELL_V1;
-
-  size_t i;
-  xdwl_list *l;
-  for (l = *globals, i = 0; l->next; i++, l = l->next) {
-    struct wl_global *g = l->data;
-
-    int new_id = 0;
-    if (STREQ(g->interface, "wl_shm") || STREQ(g->interface, "wl_compositor")) {
-      new_id = xdwl_object_register(proxy, 0, g->interface);
-      if (new_id == -1) {
-        xdwlw_error_set(XDWLWE_NOIFACE, "failed to register %s", g->interface);
-        xdwlw_exit();
-      }
-
-    } else if (STREQ(g->interface, "wp_viewporter")) {
-      new_id = xdwl_object_register(proxy, 0, g->interface);
-      if (new_id == -1) {
-        xdwlw_error_set(XDWLWE_NOIFACE, "failed to register %s", g->interface);
-        xdwlw_exit();
-      }
-
-      n &= ~WP_VIEWPORTER;
-
-    } else if (STREQ(g->interface, "zwlr_layer_shell_v1")) {
-      new_id = xdwl_object_register(proxy, 0, g->interface);
-      n &= ~ZWLR_LAYER_SHELL_V1;
-    }
-
-    if (new_id > 0) {
-      xdwl_registry_bind(proxy, g->name, g->interface, g->version, new_id);
-      ENSURE_RESULT(xdwl_roundtrip(proxy));
-      xdwl_list_remove(globals, i);
-    }
-  }
-
-  return n;
 };
 
 xdwl_list *xdwlw_init() {
-  global_listeners = xdwl_list_new();
-  if (!global_listeners)
-    return NULL;
-
   proxy = xdwl_proxy_create();
   if (!proxy)
-    return NULL;
+    xdwlw_exit(0);
 
   ENSURE_RESULT(xdwl_object_register(proxy, 0, "wl_display"));
-  struct xdwl_display_event_handlers *wl_display =
-      xdwl_list_push(global_listeners,
-                     &(struct xdwl_display_event_handlers){
-                         .delete_id = handle_wl_display_delete_id,
-                         .error = handle_wl_display_error},
-                     sizeof(struct xdwl_display_event_handlers));
+  struct xdwl_display_event_handlers wl_display = {
+      .delete_id = handle_wl_display_delete_id,
+      .error = handle_wl_display_error};
 
-  ENSURE_RESULT(xdwl_display_add_listener(proxy, wl_display, NULL));
+  ENSURE_RESULT(xdwl_display_add_listener(proxy, &wl_display, NULL));
 
-  xdwl_list *globals = xdwl_list_new();
-  if (!globals)
-    return NULL;
+  outputs = xdwl_list_new();
+  if (outputs == NULL)
+    xdwlw_exit(0);
 
-  xdwl_list *outputs = xdwl_list_new();
-  if (!outputs)
-    return NULL;
-
-  size_t binding_result = 0;
-
-  binding_result |= bind_globals(proxy, &globals);
-  binding_result |= get_outputs(proxy, globals, outputs);
-
-  xdwl_list_destroy(globals);
-
-  if (binding_result > 0) {
-    show_not_supported_interfaces(binding_result);
-    return NULL;
-  };
-
+  bind_globals();
   return outputs;
 }
 
-void xdwlw_exit() {
+void xdwlw_exit(int _) {
   int xdwl_err = xdwl_error_get_code();
   int xdwlw_err = xdwlw_error_get_code();
 
@@ -365,15 +556,8 @@ void xdwlw_exit() {
     xdwlw_error_print();
   }
 
-  xdwl_list_destroy(global_listeners);
+  printf("\n");
   exit(xdwl_err || xdwlw_err);
-}
-
-void setup_output(struct output *o) {
-  if (o->busy == 0) {
-    create_layer_surface(o);
-    o->busy = 1;
-  }
 }
 
 void read_from_cache(struct output *o) {
@@ -391,7 +575,7 @@ void read_from_cache(struct output *o) {
       if (f == NULL) {
         xdwlw_error_set(XDWLWE_NOFILE, "failed to open %s for reading",
                         filepath);
-        xdwlw_exit();
+        xdwlw_exit(0);
       }
 
       enum wallpaper_type type = fgetc(f);
@@ -443,7 +627,7 @@ void write_to_cache(struct output *o) {
   FILE *f = fopen(filepath, "wb");
   if (f == NULL) {
     xdwlw_error_set(XDWLWE_NOFILE, "failed to open %s for writing", filepath);
-    xdwlw_exit();
+    xdwlw_exit(0);
   }
 
   size_t buffer_size;
@@ -471,11 +655,23 @@ void write_to_cache(struct output *o) {
   fclose(f);
 };
 
+void *wayland_listen(void *_) {
+  while (xdwl_dispatch(proxy) != -1)
+    ;
+
+  xdwlw_exit(0);
+  return NULL;
+}
+
 int main() {
   xdwl_list *l;
   struct output *o;
   struct ipc_message *msg;
   struct ipc_message reply;
+  pthread_t thread;
+
+  signal(SIGTERM, xdwlw_exit);
+  signal(SIGINT, xdwlw_exit);
 
   int cfd = 0;
   sfd = ipc_server_start();
@@ -483,36 +679,24 @@ int main() {
   if (sfd < 0) {
     xdwlw_error_set(XDWLWE_DSTART,
                     "xdwlwd: failed to start (failed to open socket)");
-    xdwlw_exit();
+    xdwlw_exit(0);
   }
 
-  xdwl_list *outputs = xdwlw_init();
+  xdwlw_init();
   if (!outputs) {
-    xdwlw_exit();
+    xdwlw_exit(0);
   }
 
   xdwl_list_for_each(l, outputs, o) {
-    xdwlw_log("info", "found output: %s %dx%d", o->name, o->width, o->height,
-              o->logical_width, o->logical_height);
-
-    setup_output(o);
-
     o->color = -1;
     o->image_path = NULL;
     o->image_mode = 0;
 
     read_from_cache(o);
-
-    if (o->image_path != NULL && o->image_mode != 0) {
-      if (draw_image_on_output(o) != 0)
-        xdwlw_exit();
-
-    } else if (o->color != -1) {
-      if (draw_color_on_output(o) != 0)
-        xdwlw_exit();
-    }
+    apply_saved_wallpapers(o);
   }
 
+  pthread_create(&thread, NULL, &wayland_listen, NULL);
   while (1) {
     msg = ipc_server_listen(sfd, &cfd);
     if (msg != NULL) {
@@ -528,7 +712,6 @@ int main() {
             o->image_path = NULL;
             o->image_mode = 0;
 
-            setup_output(o);
             write_to_cache(o);
             if (draw_color_on_output(o) != 0) {
               reply.type = IPC_SERVER_ERR;
@@ -560,7 +743,6 @@ int main() {
             o->image_path = msg->set_image.path;
             o->image_mode = msg->set_image.mode;
 
-            setup_output(o);
             write_to_cache(o);
 
             if (draw_image_on_output(o) != 0) {
@@ -599,5 +781,5 @@ exit:
       free((char *)o->image_path);
   }
   xdwl_list_destroy(outputs);
-  xdwlw_exit();
+  xdwlw_exit(0);
 }
