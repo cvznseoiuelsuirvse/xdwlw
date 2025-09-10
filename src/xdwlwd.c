@@ -2,8 +2,6 @@
 #include "xdwayland-collections.h"
 #include "xdwayland-core.h"
 #include "xdwayland-types.h"
-#include <stdint.h>
-#include <time.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -49,7 +47,6 @@ void handle_wl_display_delete_id(void *, xdwl_arg *);
 void handle_wl_registry_global(void *, xdwl_arg *);
 void handle_wl_output_mode(void *, xdwl_arg *);
 void handle_wl_output_name(void *, xdwl_arg *);
-void handle_wl_pointer_enter(void *, xdwl_arg *);
 void handle_xdg_output_logical_size(void *, xdwl_arg *);
 void handle_zwlr_layer_surface_v1_closed(void *, xdwl_arg *);
 void handle_zwlr_layer_surface_v1_configure(void *, xdwl_arg *);
@@ -105,29 +102,14 @@ void handle_wl_output_name(void *_, xdwl_arg *args) {
   }
 
   if (old_output != NULL) {
+    memcpy(new_output, old_output, sizeof(struct output));
     new_output->id = new_output_id;
     new_output->name = old_output->name;
-    new_output->color = old_output->color;
-    new_output->image_path = old_output->image_path;
-    new_output->image_mode = old_output->image_mode;
-    new_output->buffer = old_output->buffer;
-    new_output->buffer_id = old_output->buffer_id;
-    new_output->surface_id = old_output->surface_id;
     xdwl_list_remove(&outputs, old_output_idx);
 
   } else {
     new_output->name = strdup(new_output_name);
   }
-}
-
-void handle_wl_pointer_enter(void *cursor_surface, xdwl_arg *args) {
-  uint32_t serial = args[1].u;
-  float surface_x = args[3].f;
-  float surface_y = args[4].f;
-
-  xdwl_pointer_set_cursor(proxy, 0, serial, *(uint32_t *)cursor_surface,
-                          surface_x, surface_y);
-  ENSURE_RESULT(xdwl_roundtrip(proxy));
 }
 
 void handle_xdg_output_logical_size(void *output, xdwl_arg *args) {
@@ -147,14 +129,14 @@ void get_output_logical_size(struct output *o) {
   ENSURE_RESULT(xdwl_roundtrip(proxy));
 }
 
-void *create_wl_buffer(uint32_t width, uint32_t height,
-                       uint32_t *wl_buffer_id) {
+void create_output_buffer(struct output *o) {
   size_t wl_shm_pool_id;
+  size_t wl_buffer_id;
 
   char name[255];
   snprintf(name, 255, "xdwlw-shm-%x", rand());
 
-  int32_t buffer_size = width * height * BPP;
+  int32_t buffer_size = o->width * o->height * BPP;
 
   int fd = shm_open(name, O_RDWR | O_EXCL | O_CREAT, 0600);
   shm_unlink(name);
@@ -162,14 +144,14 @@ void *create_wl_buffer(uint32_t width, uint32_t height,
   if (fd == -1) {
     perror("shm_open");
     xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
-                    name);
+                    o->name);
     xdwlw_exit(0);
   }
 
   if (ftruncate(fd, buffer_size) == -1) {
     perror("ftruncate");
     xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
-                    name);
+                    o->name);
     xdwlw_exit(0);
   }
 
@@ -183,9 +165,9 @@ void *create_wl_buffer(uint32_t width, uint32_t height,
     wl_shm_pool_id = wl_shm_pool_object->id;
   }
 
-  *wl_buffer_id = xdwl_object_register(proxy, 0, "wl_buffer");
-  xdwl_shm_pool_create_buffer(proxy, 0, *wl_buffer_id, 0, width, height,
-                              width * BPP, XDWL_SHM_FORMAT_ARGB8888);
+  wl_buffer_id = xdwl_object_register(proxy, 0, "wl_buffer");
+  xdwl_shm_pool_create_buffer(proxy, 0, wl_buffer_id, 0, o->width, o->height,
+                              o->width * BPP, XDWL_SHM_FORMAT_ARGB8888);
 
   uint32_t *buffer =
       mmap(NULL, buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -193,14 +175,15 @@ void *create_wl_buffer(uint32_t width, uint32_t height,
   if (buffer == MAP_FAILED) {
     perror("mmap");
     xdwlw_error_set(XDWLWE_NOOUPUTBUF, "failed to create %s output buffer",
-                    name);
+                    o->name);
     xdwlw_exit(0);
   }
 
   xdwlw_log("info", "initialized buffer %s with a size of %d", name,
             buffer_size);
 
-  return buffer;
+  o->buffer = buffer;
+  o->buffer_id = wl_buffer_id;
 }
 
 void destroy_output_buffer(struct output *o) {
@@ -237,7 +220,7 @@ void handle_zwlr_layer_surface_v1_configure(void *output, xdwl_arg *args) {
   }
 
   if (o->buffer == NULL) {
-    o->buffer = create_wl_buffer(o->width, o->height, &o->buffer_id);
+    create_output_buffer(o);
   }
 }
 
@@ -290,7 +273,7 @@ void handle_wl_registry_global(void *_, xdwl_arg *args) {
   int new_id = 0;
 
   if (STREQ(interface, "wl_shm") || STREQ(interface, "wl_compositor") ||
-      STREQ(interface, "wp_viewporter") ||
+      STREQ(interface, "wp_viewporter") || STREQ(interface, "wp_viewporter") ||
       STREQ(interface, "zwlr_layer_shell_v1") ||
       STREQ(interface, "zxdg_output_manager_v1")) {
 
@@ -515,7 +498,7 @@ void apply(struct output *o) {
   ENSURE_RESULT(xdwl_roundtrip(proxy));
 }
 
-void setup_globals() {
+void bind_globals() {
   size_t wl_registry_id = xdwl_object_register(proxy, 0, "wl_registry");
 
   struct xdwl_registry_event_handlers wl_registry_event_handlers = {
@@ -546,7 +529,7 @@ void xdwlw_init() {
   if (outputs == NULL)
     xdwlw_exit(0);
 
-  setup_globals();
+  bind_globals();
 }
 
 void xdwlw_exit(int _) {
