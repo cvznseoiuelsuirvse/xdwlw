@@ -4,7 +4,6 @@
 #include "xdwayland-common.h"
 #include "xdwayland-private.h"
 #include "xdwayland-types.h"
-#include <stdint.h>
 
 xdwl_proxy *xdwl_proxy_create();
 void xdwl_proxy_destroy(xdwl_proxy *proxy);

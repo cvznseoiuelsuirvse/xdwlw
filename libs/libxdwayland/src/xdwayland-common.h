@@ -2,7 +2,9 @@
 #define XDWAYLAND_COMMON_H
 
 #include <assert.h>
+#include <pthread.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -11,7 +13,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#define CAP 2048
+#define CAP 4096
 #define MAX_ARGS 16
 #define HEADER_SIZE 8
 #define PADDED4(n) ((n + 4) & ~3)

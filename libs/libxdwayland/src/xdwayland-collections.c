@@ -258,8 +258,8 @@ int xdwl_bitmap_chsize(xdwl_bitmap *bm, uint32_t new_size) {
   }
 
   uint8_t *new_ptr = realloc(bm->bytes, new_size / 8);
-  if (!new_ptr) {
-    perror("realloc");
+  printf("%p\n", new_ptr);
+  if (new_ptr == NULL) {
     xdwl_error_set(XDWLERR_STD, "xdwl_bitmap_grow: failed to realloc()",
                    bm->limit);
     return -1;

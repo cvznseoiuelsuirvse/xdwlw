@@ -1,11 +1,5 @@
-#include "xdwayland-collections.h"
-#include "xdwayland-common.h"
 #include "xdwayland-core.h"
 #include "xdwayland-private.h"
-#include "xdwayland-types.h"
-#include <stddef.h>
-#include <stdint.h>
-#include <unistd.h>
 
 #define CLIENT_IDS_START 1
 #define CLIENT_IDS_END 0xFEFFFFFF
@@ -23,8 +17,21 @@ static xdwl_bitmap *client_id_pool = NULL;
 static xdwl_bitmap *server_id_pool = NULL;
 static uint32_t sequence_number = 0;
 
-XDWL_MUST_CHECK static int
-xdwl_dispatch_message(xdwl_proxy *proxy, struct xdwl_raw_message *raw_message) {
+void print_buffer(char *buffer, size_t buffer_len) {
+  for (size_t i = 0; i < buffer_len; i++) {
+    uint8_t c = buffer[i];
+    if (32 <= c && c <= 126) {
+      printf("%c ", c);
+    } else {
+      printf("%02x ", c);
+    }
+  }
+  printf("\n");
+}
+
+XDWL_MUST_CHECK
+static int xdwl_dispatch_message(xdwl_proxy *proxy,
+                                 struct xdwl_raw_message *raw_message) {
   xdwl_object *object = xdwl_object_get_by_id(proxy, raw_message->object_id);
   if (object == NULL) {
     xdwl_error_set(XDWLERR_NULLOBJ,
@@ -141,6 +148,12 @@ uint32_t xdwl_object_register(xdwl_proxy *proxy, uint32_t object_id,
 
   if (object_id == 0) {
     if ((o = xdwl_bitmap_get_free(client_id_pool)) == 0) {
+      o = client_id_pool->size + 1;
+      if (xdwl_bitmap_chsize(
+              client_id_pool,
+              (uint32_t)((object_id - CLIENT_IDS_START) / 8) * 8 + 8) == -1) {
+        return 0;
+      }
     };
 
     if (xdwl_bitmap_set(client_id_pool, o) == -1)
@@ -294,18 +307,9 @@ xdwl_proxy *xdwl_proxy_create() {
   }
 
   proxy->sockfd = sock_fd;
-
   proxy->obj_reg = xdwl_map_new(CAP);
   if (proxy->obj_reg == NULL)
     return NULL;
-
-  proxy->buffer = malloc(CAP);
-  if (proxy->buffer == NULL) {
-    perror("malloc");
-    xdwl_error_set(XDWLERR_STD,
-                   "xdwl_proxy_create: failed to malloc() proxy buffer");
-    return NULL;
-  }
 
   xdwl_listeners = xdwl_map_new(CAP);
   if (xdwl_listeners == NULL)
@@ -316,9 +320,6 @@ xdwl_proxy *xdwl_proxy_create() {
 
 void xdwl_proxy_destroy(xdwl_proxy *proxy) {
   if (proxy != NULL) {
-    if (proxy->buffer != NULL)
-      free(proxy->buffer);
-
     if (proxy->obj_reg != NULL)
       xdwl_destroy_objects(proxy);
 
@@ -381,7 +382,8 @@ int xdwl_add_listener(xdwl_proxy *proxy, const char *object_name,
   return 0;
 }
 
-static ssize_t xdwl_sock_send(xdwl_proxy *proxy, size_t buffer_len, int fd) {
+static ssize_t xdwl_sock_send(xdwl_proxy *proxy, char *buffer,
+                              size_t buffer_len, int fd) {
   if (fd > 0) {
     struct msghdr m;
     char cmsg[CMSG_SPACE(sizeof(fd))];
@@ -389,7 +391,7 @@ static ssize_t xdwl_sock_send(xdwl_proxy *proxy, size_t buffer_len, int fd) {
     memset(cmsg, 0, CMSG_SPACE(sizeof(fd)));
     memset(&m, 0, sizeof(struct msghdr));
 
-    struct iovec e = {proxy->buffer, buffer_len};
+    struct iovec e = {buffer, buffer_len};
     m.msg_iov = &e;
     m.msg_iovlen = 1;
     m.msg_control = cmsg;
@@ -403,7 +405,7 @@ static ssize_t xdwl_sock_send(xdwl_proxy *proxy, size_t buffer_len, int fd) {
 
     return sendmsg(proxy->sockfd, &m, 0);
   }
-  return send(proxy->sockfd, proxy->buffer, buffer_len, 0);
+  return send(proxy->sockfd, buffer, buffer_len, 0);
 };
 
 int xdwl_send_request(xdwl_proxy *proxy, uint32_t object_id, char *object_name,
@@ -482,22 +484,14 @@ int xdwl_send_request(xdwl_proxy *proxy, uint32_t object_id, char *object_name,
       xdwl_calculate_body_size(request_args, arg_count, request_signature);
   size_t offset = 0;
 
-  xdwl_buf_write_u32(proxy->buffer, &offset, object_id);
-  xdwl_buf_write_u16(proxy->buffer, &offset, method_id);
-  xdwl_buf_write_u16(proxy->buffer, &offset, message_size);
-  xdwl_write_args(proxy->buffer, &offset, request_args, arg_count,
-                  request_signature);
+  char buffer[CAP];
 
-#ifdef DEBUG
-  printf("\nTO SERVER\n");
-  for (size_t i = 0; i < message_size; i++) {
-    char c = proxy->buffer[i];
-    printf("%02X ", c);
-  }
-  printf("\nTO SERVER\n");
-  fflush(stdout);
-#endif
-  int n = xdwl_sock_send(proxy, message_size, fd);
+  xdwl_buf_write_u32(buffer, &offset, object_id);
+  xdwl_buf_write_u16(buffer, &offset, method_id);
+  xdwl_buf_write_u16(buffer, &offset, message_size);
+  xdwl_write_args(buffer, &offset, request_args, arg_count, request_signature);
+
+  int n = xdwl_sock_send(proxy, buffer, message_size, fd);
   if (n < 0) {
     xdwl_error_set(XDWLERR_SOCKSEND,
                    "xdwl_send_request: failed to send message");
@@ -507,9 +501,9 @@ int xdwl_send_request(xdwl_proxy *proxy, uint32_t object_id, char *object_name,
   return 0;
 }
 
-static ssize_t xdwl_sock_recv(xdwl_proxy *proxy, int *fd) {
+static ssize_t xdwl_sock_recv(xdwl_proxy *proxy, char *buffer, int *fd) {
   char cmsg[CMSG_SPACE(sizeof(int))];
-  struct iovec e = {proxy->buffer, CAP};
+  struct iovec e = {buffer, CAP};
   struct msghdr m = {NULL, 0, &e, 1, cmsg, sizeof(cmsg), 0};
 
   ssize_t n = recvmsg(proxy->sockfd, &m, 0);
@@ -520,101 +514,103 @@ static ssize_t xdwl_sock_recv(xdwl_proxy *proxy, int *fd) {
   return n;
 }
 
-int xdwl_recv_events(xdwl_proxy *proxy, xdwl_list *messages_list) {
+int xdwl_recv_events(xdwl_proxy *proxy, char *buffer, xdwl_list *messages) {
   int fd = 0;
-  int n = xdwl_sock_recv(proxy, &fd);
+  int offset = 0;
+  int n = xdwl_sock_recv(proxy, buffer, &fd);
+  int msgc = 0;
 
   if (n <= 0) {
     xdwl_error_set(XDWLERR_SOCKRECV, "xdwl_recv_events: server is gone");
-    return -1;
+    return 0;
   }
-
-  int offset = 0;
-
-#ifdef DEBUG
-  printf("\nFROM SERVER\n");
-  for (size_t i = 0; i < n; i++) {
-    char c = proxy->buffer[offset + i];
-    printf("%02X ", c);
-  }
-  printf("\nFROM SERVER\n");
-#endif
 
   while (offset + HEADER_SIZE <= n) {
     size_t _offset = offset;
 
-    size_t object_id = xdwl_buf_read_u32(proxy->buffer, &_offset);
-    uint16_t method_id = xdwl_buf_read_u16(proxy->buffer, &_offset);
-    uint16_t message_size = xdwl_buf_read_u16(proxy->buffer, &_offset);
+    size_t object_id = xdwl_buf_read_u32(buffer, &_offset);
+    uint16_t method_id = xdwl_buf_read_u16(buffer, &_offset);
+    uint16_t message_size = xdwl_buf_read_u16(buffer, &_offset);
 
-    struct xdwl_raw_message raw_message = {
-        .object_id = object_id,
-        .method_id = method_id,
-        .body_length = message_size - HEADER_SIZE,
-        .fd = fd,
-    };
-    memcpy(raw_message.body, proxy->buffer + _offset, raw_message.body_length);
+    struct xdwl_raw_message *raw_message =
+        malloc(sizeof(struct xdwl_raw_message));
+
+    if (raw_message == NULL) {
+      xdwl_error_set(XDWLERR_STD, "failed to malloc() raw_message");
+      return 0;
+    }
+
+    raw_message->object_id = object_id;
+    raw_message->method_id = method_id;
+    raw_message->body_length = message_size - HEADER_SIZE;
+    raw_message->body = buffer + _offset;
+    raw_message->fd = fd;
 
     xdwl_object *object = xdwl_object_get_by_id(proxy, object_id);
     if (object == NULL) {
       xdwl_error_set(XDWLERR_NULLOBJ,
                      "xdwl_recv_events: no registered objects found with id %d",
                      object_id);
-      return -1;
+      free(raw_message);
+      return 0;
     }
 
-    if (xdwl_list_push(messages_list, &raw_message,
-                       sizeof(struct xdwl_raw_message)) == NULL)
-      return -1;
     offset += message_size;
+    msgc++;
+    if (xdwl_list_push(messages, raw_message,
+                       sizeof(struct xdwl_raw_message)) == NULL)
+      return 0;
   }
 
-  return 0;
+  return n;
 };
 
 int xdwl_roundtrip(xdwl_proxy *proxy) {
-  size_t callback = xdwl_object_register(proxy, 0, "wl_callback");
+  uint32_t callback_id = xdwl_object_register(proxy, 0, "wl_callback");
+  if (callback_id == 0) {
+    return -1;
+  }
 
-  if (xdwl_display_sync(proxy, callback) == -1)
+  if (xdwl_display_sync(proxy, callback_id) == -1)
     return -1;
 
   uint8_t loop = 1;
-
   while (loop) {
-    xdwl_list *raw_messages = xdwl_list_new();
-    if (xdwl_recv_events(proxy, raw_messages) == -1)
-      return -1;
+    char buffer[CAP];
+    xdwl_list *messages = xdwl_list_new();
+    xdwl_recv_events(proxy, buffer, messages);
 
-    size_t msgc = xdwl_list_len(raw_messages);
-
-    for (size_t i = 0; i < msgc; i++) {
-      struct xdwl_raw_message *raw_message = xdwl_list_get(raw_messages, i);
-      if (xdwl_dispatch_message(proxy, raw_message) == -1)
+    xdwl_list *l;
+    struct xdwl_raw_message *msg;
+    xdwl_list_for_each(l, messages, msg) {
+      if (xdwl_dispatch_message(proxy, msg) == -1) {
+        xdwl_list_destroy(messages);
         return -1;
-
-      if (raw_message->object_id == callback) {
+      }
+      if (msg->object_id == callback_id) {
         loop = 0;
       }
     }
-    xdwl_list_destroy(raw_messages);
+    xdwl_list_destroy(messages);
   }
+
   return 0;
 }
 
 int xdwl_dispatch(xdwl_proxy *proxy) {
-  xdwl_list *raw_messages = xdwl_list_new();
-  if (xdwl_recv_events(proxy, raw_messages) == -1)
-    return -1;
+  char buffer[CAP];
+  xdwl_list *messages = xdwl_list_new();
+  xdwl_recv_events(proxy, buffer, messages);
 
-  size_t msgc = xdwl_list_len(raw_messages);
-
-  for (size_t i = 0; i < msgc; i++) {
-    struct xdwl_raw_message *raw_message = xdwl_list_get(raw_messages, i);
-
-    if (xdwl_dispatch_message(proxy, raw_message) == -1)
+  xdwl_list *l;
+  struct xdwl_raw_message *msg;
+  xdwl_list_for_each(l, messages, msg) {
+    if (xdwl_dispatch_message(proxy, msg) == -1) {
+      free(msg);
       return -1;
+    }
+    free(msg);
   }
 
-  xdwl_list_destroy(raw_messages);
   return 0;
 };

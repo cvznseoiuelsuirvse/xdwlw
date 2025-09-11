@@ -2,6 +2,7 @@
 #include "xdwayland-collections.h"
 #include "xdwayland-core.h"
 #include "xdwayland-types.h"
+#include <sys/poll.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -15,7 +16,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
-#include <pthread.h>
+#include <poll.h>
 #include <signal.h>
 #include <sys/stat.h>
 
@@ -31,7 +32,7 @@ xdwl_proxy *proxy;
 xdwl_list *outputs = NULL;
 
 void xdwlw_init();
-void setup_globals();
+void bind_globals();
 void xdwlw_exit(int);
 
 void read_from_cache(struct output *);
@@ -42,6 +43,10 @@ void apply(struct output *);
 void *create_wl_buffer(uint32_t, uint32_t, uint32_t *);
 void destroy_output_buffer(struct output *);
 
+int draw_image_on_output(struct output *);
+int draw_color_on_output(struct output *);
+void apply_saved_wallpapers(struct output *);
+
 void handle_wl_display_error(void *, xdwl_arg *);
 void handle_wl_display_delete_id(void *, xdwl_arg *);
 void handle_wl_registry_global(void *, xdwl_arg *);
@@ -51,12 +56,7 @@ void handle_xdg_output_logical_size(void *, xdwl_arg *);
 void handle_zwlr_layer_surface_v1_closed(void *, xdwl_arg *);
 void handle_zwlr_layer_surface_v1_configure(void *, xdwl_arg *);
 
-uint32_t *resize_image_nni(uint32_t *i_buffer, size_t i_width, size_t i_height,
-                           size_t o_width, size_t o_height);
-
-int draw_image_on_output(struct output *o);
-int draw_color_on_output(struct output *o);
-void apply_saved_wallpapers(struct output *o);
+uint32_t *resize_image_nni(uint32_t *, size_t, size_t, size_t, size_t);
 
 void handle_wl_output_mode(void *_, xdwl_arg *args) {
   xdwl_list *l;
@@ -285,6 +285,7 @@ void handle_wl_registry_global(void *_, xdwl_arg *args) {
 
     xdwl_registry_bind(proxy, 0, name, interface, version, new_id);
     ENSURE_RESULT(xdwl_roundtrip(proxy));
+
   } else if (STREQ(interface, "wl_output")) {
     new_id = xdwl_object_register(proxy, 0, interface);
     if (new_id == -1) {
@@ -314,6 +315,7 @@ void handle_wl_registry_global(void *_, xdwl_arg *args) {
 
     xdwl_registry_bind(proxy, 0, name, interface, version, new_id);
     ENSURE_RESULT(xdwl_roundtrip(proxy));
+
     get_output_logical_size(o);
 
     xdwlw_log("info", "found output: %s %dx%d (%dx%d)", o->name, o->width,
@@ -659,7 +661,6 @@ int main() {
   struct output *o;
   struct ipc_message *msg;
   struct ipc_message reply;
-  pthread_t thread;
 
   signal(SIGTERM, xdwlw_exit);
   signal(SIGINT, xdwlw_exit);
@@ -687,81 +688,97 @@ int main() {
     apply_saved_wallpapers(o);
   }
 
-  pthread_create(&thread, NULL, &wayland_listen, NULL);
+  struct pollfd fds[2];
+  fds[0].fd = sfd;
+  fds[0].events = POLLIN;
+  fds[1].fd = proxy->sockfd;
+  fds[1].events = POLLIN;
+
+  // pthread_create(&thread, NULL, &wayland_listen, NULL);
   while (1) {
-    msg = ipc_server_listen(sfd, &cfd);
-    if (msg != NULL) {
-      switch (msg->type) {
-      case IPC_CLIENT_SET_COLOR:
-        xdwl_list_for_each(l, outputs, o) {
-          if (STREQ(o->name, msg->set_color.output) ||
-              STREQ(msg->set_color.output, "all")) {
+    int ret = poll(fds, 2, -1);
+    if (ret < 0) {
+      xdwlw_error_set(XDWLWE_DRECV, "failed to poll fds");
+      xdwlw_exit(0);
+    }
 
-            o->color = msg->set_color.color;
-            if (o->image_path != NULL)
-              free((char *)o->image_path);
-            o->image_path = NULL;
-            o->image_mode = 0;
+    if (fds[0].revents & POLLIN) {
+      msg = ipc_server_listen(sfd, &cfd);
+      if (msg != NULL) {
+        switch (msg->type) {
+        case IPC_CLIENT_SET_COLOR:
+          xdwl_list_for_each(l, outputs, o) {
+            if (STREQ(o->name, msg->set_color.output) ||
+                STREQ(msg->set_color.output, "all")) {
 
-            write_to_cache(o);
-            if (draw_color_on_output(o) != 0) {
+              o->color = msg->set_color.color;
+              if (o->image_path != NULL)
+                free((char *)o->image_path);
+              o->image_path = NULL;
+              o->image_mode = 0;
+
+              write_to_cache(o);
+              if (draw_color_on_output(o) != 0) {
+                reply.type = IPC_SERVER_ERR;
+                snprintf(reply.error.msg, sizeof(reply.error.msg), "%s",
+                         xdwlw_error_get_msg());
+                ipc_server_send(cfd, &reply);
+              }
+            } else {
               reply.type = IPC_SERVER_ERR;
-              snprintf(reply.error.msg, sizeof(reply.error.msg), "%s",
-                       xdwlw_error_get_msg());
+              snprintf(reply.error.msg, sizeof(reply.error.msg),
+                       "unknown output: %s", msg->set_color.output);
+
               ipc_server_send(cfd, &reply);
             }
-          } else {
-            reply.type = IPC_SERVER_ERR;
-            snprintf(reply.error.msg, sizeof(reply.error.msg),
-                     "unknown output: %s", msg->set_color.output);
-
-            ipc_server_send(cfd, &reply);
           }
-        }
-        ipc_server_send(cfd, &(struct ipc_message){.type = IPC_ACK});
-        break;
+          ipc_server_send(cfd, &(struct ipc_message){.type = IPC_ACK});
+          break;
 
-      case IPC_CLIENT_SET_IMAGE:
-        xdwl_list_for_each(l, outputs, o) {
-          if (STREQ(o->name, msg->set_image.output) ||
-              STREQ(msg->set_image.output, "all")) {
+        case IPC_CLIENT_SET_IMAGE:
+          xdwl_list_for_each(l, outputs, o) {
+            if (STREQ(o->name, msg->set_image.output) ||
+                STREQ(msg->set_image.output, "all")) {
 
-            o->color = -1;
+              o->color = -1;
 
-            if (o->image_path != NULL)
-              free((char *)o->image_path);
+              if (o->image_path != NULL)
+                free((char *)o->image_path);
 
-            o->image_path = msg->set_image.path;
-            o->image_mode = msg->set_image.mode;
+              o->image_path = msg->set_image.path;
+              o->image_mode = msg->set_image.mode;
 
-            write_to_cache(o);
+              write_to_cache(o);
 
-            if (draw_image_on_output(o) != 0) {
+              if (draw_image_on_output(o) != 0) {
+                reply.type = IPC_SERVER_ERR;
+                snprintf(reply.error.msg, sizeof(reply.error.msg), "%s",
+                         xdwlw_error_get_msg());
+                ipc_server_send(cfd, &reply);
+              }
+            } else {
               reply.type = IPC_SERVER_ERR;
-              snprintf(reply.error.msg, sizeof(reply.error.msg), "%s",
-                       xdwlw_error_get_msg());
+              snprintf(reply.error.msg, sizeof(reply.error.msg),
+                       "unknown output: %s", msg->set_image.output);
+
               ipc_server_send(cfd, &reply);
             }
-          } else {
-            reply.type = IPC_SERVER_ERR;
-            snprintf(reply.error.msg, sizeof(reply.error.msg),
-                     "unknown output: %s", msg->set_image.output);
-
-            ipc_server_send(cfd, &reply);
           }
+          ipc_server_send(cfd, &(struct ipc_message){.type = IPC_ACK});
+          break;
+
+        case IPC_CLIENT_KILL:
+          xdwlw_log("info", "killed. exiting");
+          ipc_server_send(cfd, &(struct ipc_message){.type = IPC_ACK});
+          goto exit;
+
+        default:
+          xdwlw_log("warn", "unknown message");
+          break;
         }
-        ipc_server_send(cfd, &(struct ipc_message){.type = IPC_ACK});
-        break;
-
-      case IPC_CLIENT_KILL:
-        xdwlw_log("info", "killed. exiting");
-        ipc_server_send(cfd, &(struct ipc_message){.type = IPC_ACK});
-        goto exit;
-
-      default:
-        xdwlw_log("warn", "unknown message");
-        break;
       }
+    } else if (fds[1].revents && POLLIN) {
+      ENSURE_RESULT(xdwl_dispatch(proxy));
     }
   }
 

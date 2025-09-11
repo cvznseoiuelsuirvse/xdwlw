@@ -2,6 +2,7 @@
 #include "xdwayland-common.h"
 #include "xdwayland-types.h"
 
+#include <stddef.h>
 #include <time.h>
 
 void xdwl_log(const char *level, const char *message, ...) {
@@ -103,6 +104,11 @@ void xdwl_write_args(char *buffer, size_t *offset, xdwl_arg *args,
   for (size_t i = 0; i < arg_count; i++) {
     char arg_signature = signature[i];
     xdwl_arg arg = args[i];
+
+    if (*offset >= CAP) {
+      return;
+    }
+
     switch (arg_signature) {
     case 'i':
       *(int32_t *)(buffer + *offset) = arg.i;

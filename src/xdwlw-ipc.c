@@ -7,18 +7,6 @@
 
 #define MAX_SOCK_BUFFER_SIZE 512
 
-void print_buffer(char *buffer, size_t buffer_len) {
-  for (size_t i = 0; i < buffer_len; i++) {
-    uint8_t c = buffer[i];
-    if (32 <= c && c <= 126) {
-      printf("%c ", c);
-    } else {
-      printf("%02x ", c);
-    }
-  }
-  printf("\n");
-}
-
 static void ipc_get_sock_path(char *path) {
   char *dir = getenv("XDG_RUNTIME_DIR");
   if (!dir) {
@@ -160,6 +148,9 @@ int ipc_server_start() {
     return -1;
   }
 
+  if (listen(fd, 10) == -1)
+    return -1;
+
   return fd;
 }
 
@@ -170,8 +161,6 @@ struct ipc_message *ipc_server_listen(int sfd, int *cfd) {
 
   struct sockaddr_un client_addr;
   socklen_t client_addr_size;
-  if (listen(sfd, 10) == -1)
-    return NULL;
 
   client_addr_size = sizeof(client_addr);
   *cfd = accept(sfd, (struct sockaddr *)&client_addr, &client_addr_size);

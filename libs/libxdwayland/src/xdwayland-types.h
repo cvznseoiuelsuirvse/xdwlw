@@ -15,7 +15,6 @@ typedef union xdwl_arg {
 
 typedef struct xdwl_proxy {
   int sockfd;
-  char *buffer;
   xdwl_map *obj_reg;
 } xdwl_proxy;
 

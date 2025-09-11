@@ -3,13 +3,12 @@
 
 #include "xdwayland-common.h"
 #include "xdwayland-types.h"
-#include <stdint.h>
 
 struct xdwl_raw_message {
   uint32_t object_id;
   uint32_t method_id;
   size_t body_length;
-  char body[CAP - HEADER_SIZE];
+  char *body;
   int fd;
 };
 
@@ -32,11 +31,8 @@ struct xdwl_interface {
 
 typedef void(xdwl_event_handler)(void *, xdwl_arg *);
 
-XDWL_MUST_CHECK int xdwl_send_request(xdwl_proxy *proxy, uint32_t object_id,
-                                      char *object_name, size_t method_id,
-                                      size_t arg_count, ...);
-XDWL_MUST_CHECK int xdwl_recv_events(xdwl_proxy *proxy,
-                                     xdwl_list *messages_list);
+int xdwl_send_request(xdwl_proxy *proxy, uint32_t object_id, char *object_name,
+                      size_t method_id, size_t arg_count, ...);
 int xdwl_add_listener(xdwl_proxy *proxy, const char *object_name,
                       void *event_handlers, size_t event_handlers_size,
                       void *user_data);
